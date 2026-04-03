@@ -96,13 +96,14 @@ export interface FullStats {
   by_category: Record<string, number>;
   by_language: Record<string, number>;
   by_license: Record<string, number>;
-  by_star_range: Record<string, number>;
+  star_ranges: Record<string, number>;
   top_topics: Record<string, number>;
+  top_sub_tags: Record<string, number>;
   top_owners: Record<string, number>;
-  timeline: { month: string; count: number }[];
-  edge_counts: Record<string, number>;
-  top_repos: Repo[];
-  recently_starred: Repo[];
+  timeline: Record<string, number>;
+  edges: Record<string, { count: number; avg_weight: number }>;
+  top_starred: { full_name: string; stars: number; category: string | null; language: string | null }[];
+  recently_starred: { full_name: string; starred_at: string; category: string | null; language: string | null }[];
 }
 
 export interface SyncStatus {

@@ -106,19 +106,15 @@ function SparklineBar({
   return (
     <div className="flex items-end gap-[3px] h-7">
       {slice.map((d, i) => (
-        <Tooltip key={d.month}>
-          <TooltipTrigger
-            render={<div />}
-            className="w-[5px] rounded-[2px] bg-primary/50 transition-all hover:bg-primary cursor-default"
-            style={{
-              height: `${Math.max(12, (d.count / maxCount) * 100)}%`,
-              opacity: 0.3 + (i / slice.length) * 0.7,
-            }}
-          />
-          <TooltipContent side="top" className="text-[10px]">
-            {d.month}: {d.count} repos
-          </TooltipContent>
-        </Tooltip>
+        <div
+          key={d.month}
+          className="w-[5px] rounded-[2px] bg-primary/50 transition-all hover:bg-primary cursor-default"
+          style={{
+            height: `${Math.max(12, (d.count / maxCount) * 100)}%`,
+            opacity: 0.3 + (i / slice.length) * 0.7,
+          }}
+          title={`${d.month}: ${d.count} repos`}
+        />
       ))}
     </div>
   );
@@ -135,16 +131,24 @@ export function StatsStrip({ stats, loading }: StatsStripProps) {
     );
   }
 
-  const categoryCount = Object.keys(stats.by_category).length;
-  const languageCount = Object.keys(stats.by_language).length;
-  const totalEdges = Object.values(stats.edge_counts).reduce(
-    (a, b) => a + b,
+  const categoryCount = Object.keys(stats.by_category || {}).length;
+  const languageCount = Object.keys(stats.by_language || {}).length;
+  const totalEdges = Object.values(stats.edges || {}).reduce(
+    (a, b) => a + (b?.count || 0),
     0
   );
-  const maxTimelineCount = Math.max(...stats.timeline.map((t) => t.count), 1);
+
+  // Convert timeline dict to array
+  const timelineArray = Object.entries(stats.timeline || {}).map(
+    ([month, count]) => ({ month, count })
+  );
+  const maxTimelineCount = Math.max(
+    ...timelineArray.map((t) => t.count),
+    1
+  );
 
   // Calculate recent velocity
-  const recentMonths = stats.timeline.slice(-3);
+  const recentMonths = timelineArray.slice(-3);
   const avgRecent =
     recentMonths.length > 0
       ? Math.round(
@@ -184,7 +188,7 @@ export function StatsStrip({ stats, loading }: StatsStripProps) {
             <TrendingUp className="h-4 w-4 text-primary" />
           </div>
           <div className="min-w-0 flex-1">
-            <SparklineBar data={stats.timeline} maxCount={maxTimelineCount} />
+            <SparklineBar data={timelineArray} maxCount={maxTimelineCount} />
             <p className="text-[11px] text-muted-foreground mt-0.5">
               Velocity{" "}
               <span className="text-foreground/70 font-medium tabular-nums">

@@ -1,6 +1,6 @@
 "use client";
 
-import type { FullStats, Repo } from "@/lib/api";
+import type { FullStats } from "@/lib/api";
 import { LANG_COLORS } from "@/lib/lang-colors";
 import { formatStars } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -96,14 +96,18 @@ function BarItem({
   );
 }
 
-function MiniRepoRow({ repo, rank }: { repo: Repo; rank?: number }) {
+function MiniRepoRow({ repo, rank }: { repo: any; rank?: number }) {
+  const name = repo.full_name || repo.name || "";
+  const displayName = name.includes("/") ? name.split("/")[1] : name;
   const langColor = repo.language
     ? LANG_COLORS[repo.language] || "#666"
     : null;
+  const stars = repo.stars ?? repo.stargazers_count ?? 0;
+  const url = repo.html_url || repo.url || `https://github.com/${name}`;
 
   return (
     <a
-      href={repo.html_url}
+      href={url}
       target="_blank"
       rel="noopener noreferrer"
       className="group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-secondary/30"
@@ -121,11 +125,11 @@ function MiniRepoRow({ repo, rank }: { repo: Repo; rank?: number }) {
       )}
       {!repo.language && <span className="h-2 w-2 shrink-0" />}
       <span className="text-xs text-foreground/80 truncate min-w-0 flex-1 group-hover:text-primary transition-colors">
-        {repo.name}
+        {displayName}
       </span>
       <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/30 tabular-nums shrink-0 font-mono">
         <Star className="h-2.5 w-2.5" />
-        {formatStars(repo.stargazers_count)}
+        {formatStars(stars)}
       </span>
       <ExternalLink className="h-2.5 w-2.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors shrink-0" />
     </a>
@@ -151,7 +155,7 @@ export function InsightsPanel({ stats, loading }: InsightsPanelProps) {
   const maxLang = topLangs[0]?.[1] || 1;
   const maxOwner = topOwners[0]?.[1] || 1;
 
-  const topRepos = stats.top_repos?.slice(0, 5) || [];
+  const topRepos = stats.top_starred?.slice(0, 5) || [];
   const recentRepos = stats.recently_starred?.slice(0, 5) || [];
 
   return (
@@ -216,8 +220,8 @@ export function InsightsPanel({ stats, loading }: InsightsPanelProps) {
               label="Most starred"
             />
             <div className="space-y-0">
-              {topRepos.map((repo, i) => (
-                <MiniRepoRow key={repo.id} repo={repo} rank={i + 1} />
+              {topRepos.map((repo: any, i: number) => (
+                <MiniRepoRow key={repo.full_name} repo={repo} rank={i + 1} />
               ))}
             </div>
           </div>
@@ -232,8 +236,8 @@ export function InsightsPanel({ stats, loading }: InsightsPanelProps) {
                 label="Recently starred"
               />
               <div className="space-y-0">
-                {recentRepos.map((repo) => (
-                  <MiniRepoRow key={repo.id} repo={repo} />
+                {recentRepos.map((repo: any) => (
+                  <MiniRepoRow key={repo.full_name} repo={repo} />
                 ))}
               </div>
             </div>
