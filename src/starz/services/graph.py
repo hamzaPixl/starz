@@ -319,18 +319,19 @@ def get_graph_data(edge_types: list[str] | None = None) -> dict:
 
 
 def get_similar_repos(repo_id: int, limit: int = 5) -> list[dict]:
-    """Get similar repos from precomputed edges."""
+    """Get similar repos from precomputed edges, deduplicated."""
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT r.*, e.weight as similarity
+            SELECT r.*, MAX(e.weight) as similarity
             FROM repo_edges e
             INNER JOIN repos r ON (
                 CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END
             ) = r.id
             WHERE (e.source_id = ? OR e.target_id = ?)
               AND e.edge_type = 'similar'
-            ORDER BY e.weight DESC
+            GROUP BY r.id
+            ORDER BY similarity DESC
             LIMIT ?
         """,
             (repo_id, repo_id, repo_id, limit),

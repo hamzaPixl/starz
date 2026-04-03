@@ -157,6 +157,14 @@ export const api = {
 
   getSyncStatus: () => fetchApi<SyncStatus>("/sync/status"),
 
+  getTrends: () => fetchApi<any>("/trends"),
+
+  getFreshness: () => fetchApi<any>("/freshness"),
+
+  getDigest: (days = 30) => fetchApi<any>(`/digest?days=${days}`),
+
+  getEcosystems: () => fetchApi<any>("/ecosystems"),
+
   getGraph: (edgeTypes?: string[]) => {
     const params = edgeTypes ? `?edge_types=${edgeTypes.join(",")}` : "";
     return fetchApi<GraphData>(`/graph${params}`);

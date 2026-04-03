@@ -1,11 +1,12 @@
 "use client";
 
-import { Sparkles, LayoutGrid, MessageCircle } from "lucide-react";
+import { Sparkles, LayoutGrid, MessageCircle, Compass } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutGrid },
+  { href: "/discover/", label: "Discover", icon: Compass },
   { href: "/chat/", label: "Chat", icon: MessageCircle },
 ];
 
