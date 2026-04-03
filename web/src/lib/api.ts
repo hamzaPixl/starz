@@ -165,6 +165,21 @@ export const api = {
 
   getEcosystems: () => fetchApi<any>("/ecosystems"),
 
+  generateReport: (topic?: string) =>
+    fetchApi<{ topic: string | null; report: string }>("/reports/landscape", {
+      method: "POST",
+      body: JSON.stringify({}),
+      ...(topic ? { body: JSON.stringify({ topic }) } : {}),
+    }),
+
+  generateDeepDive: (topic: string) =>
+    fetchApi<{ topic: string; report: string }>(`/reports/deep-dive?topic=${encodeURIComponent(topic)}`, {
+      method: "POST",
+    }),
+
+  exportAwesome: () =>
+    fetch(`${API_BASE}/export/awesome`).then((r) => r.text()),
+
   getGraph: (edgeTypes?: string[]) => {
     const params = edgeTypes ? `?edge_types=${edgeTypes.join(",")}` : "";
     return fetchApi<GraphData>(`/graph${params}`);

@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "@/lib/api";
 import { CATEGORY_COLORS } from "@/lib/lang-colors";
 import { NavHeader } from "@/components/nav-header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   Loader2, TrendingUp, TrendingDown, Star, Zap, Shield,
   AlertTriangle, ExternalLink, Check, X as XIcon,
+  FileText, Microscope, Download, Copy, CheckCheck,
 } from "lucide-react";
 
 export default function DiscoverPage() {
@@ -17,6 +22,17 @@ export default function DiscoverPage() {
   const [digest, setDigest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Report / deep-dive / export state
+  const [reportContent, setReportContent] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportTopic, setReportTopic] = useState<string | null>(null);
+  const [deepDiveContent, setDeepDiveContent] = useState<string | null>(null);
+  const [deepDiveLoading, setDeepDiveLoading] = useState(false);
+  const [deepDiveTopic, setDeepDiveTopic] = useState("");
+  const [exportContent, setExportContent] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     Promise.all([
       api.getTrends(), api.getFreshness(), api.getEcosystems(), api.getDigest(30),
@@ -24,6 +40,40 @@ export default function DiscoverPage() {
       setTrends(t); setFreshness(f); setEcosystems(e); setDigest(d);
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
+
+  const handleReport = useCallback(async (topic?: string) => {
+    setReportLoading(true); setReportContent(null); setReportTopic(topic ?? null);
+    try {
+      const res = await api.generateReport(topic);
+      setReportContent(res.report);
+    } catch (e) { setReportContent("Failed to generate report. Check your Anthropic API key."); }
+    finally { setReportLoading(false); }
+  }, []);
+
+  const handleDeepDive = useCallback(async () => {
+    if (!deepDiveTopic.trim()) return;
+    setDeepDiveLoading(true); setDeepDiveContent(null);
+    try {
+      const res = await api.generateDeepDive(deepDiveTopic.trim());
+      setDeepDiveContent(res.report);
+    } catch (e) { setDeepDiveContent("Failed to generate analysis. Check your Anthropic API key."); }
+    finally { setDeepDiveLoading(false); }
+  }, [deepDiveTopic]);
+
+  const handleExport = useCallback(async () => {
+    setExportLoading(true); setExportContent(null);
+    try {
+      const md = await api.exportAwesome();
+      setExportContent(md);
+    } catch (e) { setExportContent("Failed to export."); }
+    finally { setExportLoading(false); }
+  }, []);
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   if (loading) {
     return (
@@ -46,13 +96,14 @@ export default function DiscoverPage() {
   const stale = freshness?.tiers?.abandoned ?? [];
   const totalRepos = (fc.thriving ?? 0) + (fc.active ?? 0) + (fc.slowing_down ?? 0) + (fc.abandoned ?? 0);
 
-  // Health distribution as segments
   const healthSegments = [
     { label: "Thriving", count: fc.thriving ?? 0, color: "#10b981" },
     { label: "Active", count: fc.active ?? 0, color: "#3b82f6" },
     { label: "Slowing", count: fc.slowing_down ?? 0, color: "#f59e0b" },
     { label: "Abandoned", count: fc.abandoned ?? 0, color: "#ef4444" },
   ];
+
+  const categories = Object.keys(CATEGORY_COLORS);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background">
@@ -63,9 +114,8 @@ export default function DiscoverPage() {
 
           <h1 className="text-4xl font-bold tracking-tight">Discover</h1>
 
-          {/* ── Row 1: Health bar + Digest numbers ── */}
+          {/* ── Health bar ── */}
           <div className="rounded-xl border border-border bg-card p-6">
-            {/* Health distribution bar */}
             <div className="flex h-4 rounded-lg overflow-hidden mb-4">
               {healthSegments.map(s => s.count > 0 ? (
                 <div key={s.label} style={{ width: `${(s.count / totalRepos) * 100}%`, backgroundColor: s.color }}
@@ -93,19 +143,16 @@ export default function DiscoverPage() {
             </div>
           </div>
 
-          {/* ── Row 2: Timeline + Trends side by side ── */}
+          {/* ── Timeline + Trends ── */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-            {/* Timeline — takes 3 cols */}
             {timeline.length > 0 && (
               <div className="lg:col-span-3 rounded-xl border border-border bg-card p-6">
                 <p className="text-sm font-semibold mb-5">Starring Activity</p>
                 <div className="flex items-end gap-2 h-36">
                   {timeline.slice(-12).map((entry: any) => (
                     <div key={entry.month} className="flex-1 flex flex-col items-center gap-1.5">
-                      <div
-                        className="w-full rounded-t bg-primary/50 hover:bg-primary transition-colors cursor-default relative group min-h-[4px]"
-                        style={{ height: `${Math.max(3, (entry.count / maxT) * 100)}%` }}
-                      >
+                      <div className="w-full rounded-t bg-primary/50 hover:bg-primary transition-colors cursor-default relative group min-h-[4px]"
+                        style={{ height: `${Math.max(3, (entry.count / maxT) * 100)}%` }}>
                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block text-sm text-foreground bg-popover border border-border rounded-lg px-3 py-1.5 whitespace-nowrap z-10 font-mono shadow-lg">
                           {entry.month}: {entry.count}
                         </div>
@@ -116,41 +163,31 @@ export default function DiscoverPage() {
                 </div>
               </div>
             )}
-
-            {/* Trends — takes 2 cols */}
             <div className="lg:col-span-2 rounded-xl border border-border bg-card p-6">
               <p className="text-sm font-semibold mb-5">Interest Shifts</p>
-              {accelerating.length > 0 && (
-                <div className="mb-5">
-                  {accelerating.map((a: any) => (
-                    <div key={a.category} className="flex items-center gap-3 py-2">
-                      <TrendingUp className="h-4 w-4 text-green-400 shrink-0" />
-                      <span className="text-sm flex-1 truncate">{a.category}</span>
-                      <span className="text-sm text-muted-foreground font-mono">{a.previous}</span>
-                      <span className="text-sm text-green-400 font-mono font-bold">{a.recent}</span>
-                    </div>
-                  ))}
+              {accelerating.map((a: any) => (
+                <div key={a.category} className="flex items-center gap-3 py-2">
+                  <TrendingUp className="h-4 w-4 text-green-400 shrink-0" />
+                  <span className="text-sm flex-1 truncate">{a.category}</span>
+                  <span className="text-sm text-muted-foreground font-mono">{a.previous}</span>
+                  <span className="text-sm text-green-400 font-mono font-bold">{a.recent}</span>
                 </div>
-              )}
-              {declining.length > 0 && (
-                <div>
-                  {declining.map((d: any) => (
-                    <div key={d.category} className="flex items-center gap-3 py-2">
-                      <TrendingDown className="h-4 w-4 text-amber-400 shrink-0" />
-                      <span className="text-sm flex-1 truncate">{d.category}</span>
-                      <span className="text-sm text-muted-foreground font-mono">{d.previous}</span>
-                      <span className="text-sm text-amber-400 font-mono font-bold">{d.recent}</span>
-                    </div>
-                  ))}
+              ))}
+              {declining.map((d: any) => (
+                <div key={d.category} className="flex items-center gap-3 py-2">
+                  <TrendingDown className="h-4 w-4 text-amber-400 shrink-0" />
+                  <span className="text-sm flex-1 truncate">{d.category}</span>
+                  <span className="text-sm text-muted-foreground font-mono">{d.previous}</span>
+                  <span className="text-sm text-amber-400 font-mono font-bold">{d.recent}</span>
                 </div>
-              )}
+              ))}
               {accelerating.length === 0 && declining.length === 0 && (
-                <p className="text-sm text-muted-foreground py-4">Need more starring history to detect shifts.</p>
+                <p className="text-sm text-muted-foreground py-4">Need more history to detect shifts.</p>
               )}
             </div>
           </div>
 
-          {/* ── Row 3: Hot Topics as weighted tags ── */}
+          {/* ── Hot Topics ── */}
           {hotTopics.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-6">
               <p className="text-sm font-semibold mb-5">Hot Topics</p>
@@ -158,9 +195,9 @@ export default function DiscoverPage() {
                 {hotTopics.map((h: any) => {
                   const maxH = hotTopics[0]?.count || 1;
                   const weight = h.count / maxH;
-                  const size = 14 + weight * 8; // 14px to 22px
+                  const size = 14 + weight * 8;
                   return (
-                    <span key={h.topic} className="inline-flex items-baseline gap-2 rounded-lg bg-muted px-4 py-2 transition-colors hover:bg-accent cursor-default"
+                    <span key={h.topic} className="inline-flex items-baseline gap-2 rounded-lg bg-muted px-4 py-2 hover:bg-accent cursor-default"
                       style={{ fontSize: `${size}px` }}>
                       <span className="text-foreground font-medium">{h.topic}</span>
                       <span className="text-muted-foreground font-mono" style={{ fontSize: '13px' }}>{h.count}</span>
@@ -171,7 +208,7 @@ export default function DiscoverPage() {
             </div>
           )}
 
-          {/* ── Row 4: Ecosystems ── */}
+          {/* ── Ecosystems ── */}
           {ecoPairs.length > 0 && (
             <div>
               <p className="text-sm font-semibold mb-4">Your Tech Stacks</p>
@@ -182,11 +219,9 @@ export default function DiscoverPage() {
                       <h3 className="text-base font-semibold">{name}</h3>
                       <span className="text-base font-bold text-primary font-mono">{data.coverage}%</span>
                     </div>
-                    {/* Progress bar */}
                     <div className="h-2 rounded-full bg-muted overflow-hidden mb-4">
                       <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${data.coverage}%` }} />
                     </div>
-                    {/* Components */}
                     <div className="flex flex-wrap gap-2 mb-3">
                       {data.matched_components?.map((c: string) => (
                         <span key={c} className="inline-flex items-center gap-1.5 text-xs text-green-400 bg-green-400/10 rounded-md px-2 py-1">
@@ -199,14 +234,14 @@ export default function DiscoverPage() {
                         </span>
                       ))}
                     </div>
-                    <p className="text-sm text-muted-foreground">{data.repo_count} repos in your collection</p>
+                    <p className="text-sm text-muted-foreground">{data.repo_count} repos</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* ── Row 5: Stale repos ── */}
+          {/* ── Stale repos ── */}
           {stale.length > 0 && (
             <div>
               <p className="text-sm font-semibold mb-4">Needs Attention</p>
@@ -225,6 +260,103 @@ export default function DiscoverPage() {
               </div>
             </div>
           )}
+
+          <Separator />
+
+          {/* ═══════════ AI Reports Section ═══════════ */}
+          <section>
+            <h2 className="text-2xl font-bold tracking-tight mb-2">AI Reports</h2>
+            <p className="text-sm text-muted-foreground mb-6">Generate on-demand analysis powered by Claude</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {/* Landscape Report */}
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Landscape Report</h3>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Full analysis of your collection — key repos, themes, gaps, trends.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => handleReport()} disabled={reportLoading}>
+                    {reportLoading && !reportTopic ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                    Full Collection
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleReport("ML/AI Library")} disabled={reportLoading}>
+                    {reportLoading && reportTopic === "ML/AI Library" ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                    ML/AI Only
+                  </Button>
+                </div>
+              </div>
+
+              {/* Deep Dive */}
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Microscope className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Deep Dive</h3>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Compare alternatives, find the best tools for a topic.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={deepDiveTopic}
+                    onChange={(e) => setDeepDiveTopic(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleDeepDive()}
+                    placeholder="e.g. react, python, auth"
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <Button size="sm" onClick={handleDeepDive} disabled={deepDiveLoading || !deepDiveTopic.trim()}>
+                    {deepDiveLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Go"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Export */}
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Download className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Export</h3>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Generate a curated awesome-list from your stars.
+                </p>
+                <Button size="sm" onClick={handleExport} disabled={exportLoading}>
+                  {exportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Download className="h-3.5 w-3.5 mr-1.5" />}
+                  Generate Awesome List
+                </Button>
+              </div>
+            </div>
+
+            {/* Report output */}
+            {(reportContent || deepDiveContent || exportContent) && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-muted/30">
+                  <p className="text-sm font-semibold">
+                    {reportContent ? `Landscape Report${reportTopic ? ` — ${reportTopic}` : ""}` :
+                     deepDiveContent ? `Deep Dive — ${deepDiveTopic}` :
+                     "Awesome List Export"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => handleCopy(reportContent || deepDiveContent || exportContent || "")}>
+                      {copied ? <CheckCheck className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setReportContent(null); setDeepDiveContent(null); setExportContent(null); }}>
+                      <XIcon className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="px-6 py-5 prose prose-invert prose-sm max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {reportContent || deepDiveContent || exportContent || ""}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </section>
 
         </div>
       </div>
