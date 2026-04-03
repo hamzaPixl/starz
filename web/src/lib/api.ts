@@ -91,6 +91,20 @@ export interface Stats {
   by_language: Record<string, number>;
 }
 
+export interface FullStats {
+  total: number;
+  by_category: Record<string, number>;
+  by_language: Record<string, number>;
+  by_license: Record<string, number>;
+  by_star_range: Record<string, number>;
+  top_topics: Record<string, number>;
+  top_owners: Record<string, number>;
+  timeline: { month: string; count: number }[];
+  edge_counts: Record<string, number>;
+  top_repos: Repo[];
+  recently_starred: Repo[];
+}
+
 export interface SyncStatus {
   status: string;
   progress: number;
@@ -120,6 +134,8 @@ export const api = {
   getRepo: (id: number) => fetchApi<Repo>(`/repos/${id}`),
 
   getStats: () => fetchApi<Stats>("/stats"),
+
+  getFullStats: () => fetchApi<FullStats>("/stats/full"),
 
   search: (query: string, limit = 10) =>
     fetchApi<SearchResponse>("/search", {

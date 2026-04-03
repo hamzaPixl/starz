@@ -66,6 +66,14 @@ def sync() -> None:
         scored = compute_health_scores()
     console.print(f"[green]Scored {scored} repos[/green]")
 
+    # 6. Rebuild FTS search index
+    with console.status("[bold blue]Rebuilding search index..."):
+        from starz.db.client import rebuild_fts
+
+        with get_db() as conn:
+            rebuild_fts(conn)
+    console.print("[green]Search index rebuilt[/green]")
+
     # Summary
     with get_db() as conn:
         stats = get_stats(conn)

@@ -285,6 +285,13 @@ class TestSchemaAndExtension:
         ).fetchone()
         assert row is not None
 
+    def test_repos_fts_table_exists(self, db_conn: sqlite3.Connection) -> None:
+        """The repos_fts FTS5 virtual table is created by _init_db."""
+        row = db_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='repos_fts'"
+        ).fetchone()
+        assert row is not None
+
     def test_indexes_created(self, db_conn: sqlite3.Connection) -> None:
         """Expected indexes are created on the repos table."""
         rows = db_conn.execute(
@@ -300,3 +307,94 @@ class TestSchemaAndExtension:
         """sqlite-vec extension is loaded and functional."""
         row = db_conn.execute("SELECT vec_version()").fetchone()
         assert row[0] is not None
+
+
+class TestRebuildFts:
+    """Tests for rebuild_fts."""
+
+    def test_rebuild_populates_fts_from_repos(
+        self, db_conn: sqlite3.Connection
+    ) -> None:
+        """rebuild_fts copies all repos into the FTS5 index."""
+        from starz.db.client import rebuild_fts
+
+        upsert_repo(db_conn, _make_repo(full_name="a/one", name="one", owner="a"))
+        upsert_repo(db_conn, _make_repo(full_name="b/two", name="two", owner="b"))
+        db_conn.commit()
+
+        rebuild_fts(db_conn)
+
+        count = db_conn.execute("SELECT COUNT(*) as cnt FROM repos_fts").fetchone()[
+            "cnt"
+        ]
+        assert count == 2
+
+    def test_rebuild_clears_existing_fts_entries(
+        self, db_conn: sqlite3.Connection
+    ) -> None:
+        """rebuild_fts replaces the index, not appending to it."""
+        from starz.db.client import rebuild_fts
+
+        upsert_repo(db_conn, _make_repo(full_name="a/one", name="one", owner="a"))
+        db_conn.commit()
+
+        rebuild_fts(db_conn)
+        rebuild_fts(db_conn)  # Run twice
+
+        count = db_conn.execute("SELECT COUNT(*) as cnt FROM repos_fts").fetchone()[
+            "cnt"
+        ]
+        assert count == 1  # Not 2
+
+    def test_rebuild_handles_null_description(
+        self, db_conn: sqlite3.Connection
+    ) -> None:
+        """rebuild_fts coalesces NULL description to empty string."""
+        from starz.db.client import rebuild_fts
+
+        upsert_repo(
+            db_conn,
+            _make_repo(full_name="a/one", name="one", owner="a", description=None),
+        )
+        db_conn.commit()
+
+        rebuild_fts(db_conn)
+
+        count = db_conn.execute("SELECT COUNT(*) as cnt FROM repos_fts").fetchone()[
+            "cnt"
+        ]
+        assert count == 1
+
+    def test_fts_match_finds_repo(self, db_conn: sqlite3.Connection) -> None:
+        """After rebuild, FTS5 MATCH can find repos by description."""
+        from starz.db.client import rebuild_fts
+
+        upsert_repo(
+            db_conn,
+            _make_repo(
+                full_name="tiangolo/fastapi",
+                name="fastapi",
+                owner="tiangolo",
+                description="Modern web framework for building APIs with Python",
+            ),
+        )
+        upsert_repo(
+            db_conn,
+            _make_repo(
+                full_name="django/django",
+                name="django",
+                owner="django",
+                description="The web framework for perfectionists with deadlines",
+            ),
+        )
+        db_conn.commit()
+
+        rebuild_fts(db_conn)
+
+        rows = db_conn.execute(
+            "SELECT full_name FROM repos_fts WHERE repos_fts MATCH ?",
+            ("fastapi",),
+        ).fetchall()
+        names = [row["full_name"] for row in rows]
+        assert "tiangolo/fastapi" in names
+        assert "django/django" not in names

@@ -70,6 +70,20 @@ def _init_db(conn: sqlite3.Connection) -> None:
         except Exception:
             pass  # Column already exists
 
+    # FTS5 full-text search table
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS repos_fts USING fts5(
+            full_name, name, description, readme_content,
+            content='repos', content_rowid='id',
+            tokenize='porter unicode61'
+        )
+    """)
+
+
+def rebuild_fts(conn: sqlite3.Connection) -> None:
+    """Rebuild the FTS5 index from the repos table."""
+    conn.execute("INSERT INTO repos_fts(repos_fts) VALUES('rebuild')")
+
 
 def get_connection() -> sqlite3.Connection:
     """Get a new database connection with sqlite-vec loaded."""

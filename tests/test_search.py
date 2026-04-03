@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from starz.services.search import keyword_search, merge_results, search
+from starz.services.search import keyword_search, merge_results, search, fts_search
 
 
 # ---------------------------------------------------------------------------
@@ -178,72 +178,27 @@ class TestMergeResults:
 
 
 # ---------------------------------------------------------------------------
-# search (integration of vector + keyword + merge)
+# fts_search
 # ---------------------------------------------------------------------------
-class TestSearch:
-    """Tests for the top-level search function."""
+class TestFtsSearch:
+    """Tests for FTS5 full-text search."""
 
     @patch("starz.services.search.get_db")
-    @patch("starz.services.search.query_similar")
-    def test_combines_vector_and_keyword(self, mock_query_similar, mock_get_db) -> None:
-        mock_query_similar.return_value = [
-            {"full_name": "a/vec", "score": 0.9, "topics": []},
-        ]
-
-        # Mock keyword search via get_db
-        mock_conn = MagicMock()
-        cursor = MagicMock()
-        cursor.fetchall.return_value = [
-            {
-                "id": 2,
-                "full_name": "b/kw",
-                "name": "kw",
-                "owner": "b",
-                "description": "keyword match",
-                "language": "Python",
-                "topics": "[]",
-                "stargazers_count": 50,
-                "html_url": "https://github.com/b/kw",
-                "homepage": None,
-                "updated_at": None,
-                "starred_at": None,
-                "readme_content": None,
-                "embedding_text": None,
-                "category": None,
-                "synced_at": None,
-            },
-        ]
-        mock_conn.execute.return_value = cursor
-        mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
-        mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
-
-        results = search("test query")
-
-        assert len(results) == 2
-        names = [r["full_name"] for r in results]
-        assert "a/vec" in names
-        assert "b/kw" in names
-
-    @patch("starz.services.search.get_db")
-    @patch("starz.services.search.query_similar")
-    def test_vector_failure_falls_back_to_keyword(
-        self, mock_query_similar, mock_get_db
-    ) -> None:
-        mock_query_similar.side_effect = Exception("No embeddings")
-
+    def test_fts_search_returns_results_with_score(self, mock_get_db) -> None:
+        """fts_search returns results with a normalized BM25 score."""
         mock_conn = MagicMock()
         cursor = MagicMock()
         cursor.fetchall.return_value = [
             {
                 "id": 1,
-                "full_name": "a/kw",
-                "name": "kw",
+                "full_name": "a/fastapi",
+                "name": "fastapi",
                 "owner": "a",
-                "description": "found by keyword",
-                "language": "Go",
-                "topics": '["cli"]',
-                "stargazers_count": 200,
-                "html_url": "https://github.com/a/kw",
+                "description": "web framework",
+                "language": "Python",
+                "topics": '["web"]',
+                "stargazers_count": 100,
+                "html_url": "https://github.com/a/fastapi",
                 "homepage": None,
                 "updated_at": None,
                 "starred_at": None,
@@ -251,28 +206,164 @@ class TestSearch:
                 "embedding_text": None,
                 "category": None,
                 "synced_at": None,
+                "rank": -1.5,
             },
         ]
         mock_conn.execute.return_value = cursor
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
-        results = search("cli tool")
-
-        assert len(results) >= 1
-        assert results[0]["full_name"] == "a/kw"
+        results = fts_search("fastapi")
+        assert len(results) == 1
+        assert results[0]["full_name"] == "a/fastapi"
+        assert results[0]["match_type"] == "fts"
+        assert 0 < results[0]["score"] <= 1.0
+        assert "rank" not in results[0]
 
     @patch("starz.services.search.get_db")
-    @patch("starz.services.search.query_similar")
-    def test_no_results(self, mock_query_similar, mock_get_db) -> None:
-        mock_query_similar.return_value = []
+    def test_fts_search_parses_topics(self, mock_get_db) -> None:
+        """fts_search parses JSON topics into a list."""
+        mock_conn = MagicMock()
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            {
+                "id": 1,
+                "full_name": "a/repo",
+                "name": "repo",
+                "owner": "a",
+                "description": "desc",
+                "language": "Go",
+                "topics": '["cli", "tool"]',
+                "stargazers_count": 50,
+                "html_url": "https://github.com/a/repo",
+                "homepage": None,
+                "updated_at": None,
+                "starred_at": None,
+                "readme_content": None,
+                "embedding_text": None,
+                "category": None,
+                "synced_at": None,
+                "rank": -0.5,
+            },
+        ]
+        mock_conn.execute.return_value = cursor
+        mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
+        results = fts_search("cli")
+        assert results[0]["topics"] == ["cli", "tool"]
+
+    @patch("starz.services.search.get_db")
+    def test_fts_search_empty_results(self, mock_get_db) -> None:
+        """fts_search returns empty list when no matches."""
         mock_conn = MagicMock()
         cursor = MagicMock()
         cursor.fetchall.return_value = []
         mock_conn.execute.return_value = cursor
         mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        results = fts_search("nonexistent")
+        assert results == []
+
+    @patch("starz.services.search.get_db")
+    def test_fts_search_score_normalization(self, mock_get_db) -> None:
+        """BM25 rank is normalized to a 0-1 score (higher is better)."""
+        mock_conn = MagicMock()
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            {
+                "id": 1,
+                "full_name": "a/repo",
+                "name": "repo",
+                "owner": "a",
+                "description": "desc",
+                "language": "Python",
+                "topics": "[]",
+                "stargazers_count": 10,
+                "html_url": "https://github.com/a/repo",
+                "homepage": None,
+                "updated_at": None,
+                "starred_at": None,
+                "readme_content": None,
+                "embedding_text": None,
+                "category": None,
+                "synced_at": None,
+                "rank": -3.0,
+            },
+        ]
+        mock_conn.execute.return_value = cursor
+        mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        results = fts_search("repo")
+        # score = 1 / (1 + abs(-3.0)) = 1 / 4 = 0.25
+        assert results[0]["score"] == pytest.approx(0.25)
+
+
+# ---------------------------------------------------------------------------
+# search (integration of vector + fts + merge)
+# ---------------------------------------------------------------------------
+class TestSearch:
+    """Tests for the top-level search function."""
+
+    @patch("starz.services.search.fts_search")
+    @patch("starz.services.search.query_similar")
+    def test_combines_vector_and_fts(self, mock_query_similar, mock_fts) -> None:
+        mock_query_similar.return_value = [
+            {"full_name": "a/vec", "score": 0.9, "topics": [], "match_type": "vector"},
+        ]
+        mock_fts.return_value = [
+            {"full_name": "b/fts", "score": 0.6, "topics": [], "match_type": "fts"},
+        ]
+
+        results = search("test query")
+
+        assert len(results) == 2
+        names = [r["full_name"] for r in results]
+        assert "a/vec" in names
+        assert "b/fts" in names
+
+    @patch("starz.services.search.fts_search")
+    @patch("starz.services.search.query_similar")
+    def test_vector_failure_falls_back_to_fts(
+        self, mock_query_similar, mock_fts
+    ) -> None:
+        mock_query_similar.side_effect = Exception("No embeddings")
+        mock_fts.return_value = [
+            {
+                "full_name": "a/fts",
+                "score": 0.7,
+                "topics": ["cli"],
+                "match_type": "fts",
+            },
+        ]
+
+        results = search("cli tool")
+
+        assert len(results) >= 1
+        assert results[0]["full_name"] == "a/fts"
+
+    @patch("starz.services.search.fts_search")
+    @patch("starz.services.search.query_similar")
+    def test_fts_failure_falls_back_to_vector(
+        self, mock_query_similar, mock_fts
+    ) -> None:
+        mock_query_similar.return_value = [
+            {"full_name": "a/vec", "score": 0.8, "topics": [], "match_type": "vector"},
+        ]
+        mock_fts.side_effect = Exception("FTS table missing")
+
+        results = search("some query")
+
+        assert len(results) == 1
+        assert results[0]["full_name"] == "a/vec"
+
+    @patch("starz.services.search.fts_search")
+    @patch("starz.services.search.query_similar")
+    def test_no_results(self, mock_query_similar, mock_fts) -> None:
+        mock_query_similar.return_value = []
+        mock_fts.return_value = []
 
         results = search("nonexistent thing")
         assert results == []

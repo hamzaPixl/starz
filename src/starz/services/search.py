@@ -70,18 +70,50 @@ def merge_results(
     return merged[:max_results]
 
 
+def fts_search(query: str, limit: int = 10) -> list[dict]:
+    """Full-text search using FTS5 with BM25 ranking."""
+    with get_db() as conn:
+        # FTS5 MATCH with BM25 ranking
+        rows = conn.execute(
+            """
+            SELECT r.*, bm25(repos_fts) as rank
+            FROM repos_fts
+            INNER JOIN repos r ON repos_fts.rowid = r.id
+            WHERE repos_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        """,
+            (query, limit),
+        ).fetchall()
+
+        results = []
+        for row in rows:
+            repo = dict(row)
+            repo["topics"] = json.loads(repo["topics"]) if repo.get("topics") else []
+            # Normalize BM25 score (lower is better in BM25, convert to 0-1 higher-is-better)
+            repo["score"] = 1.0 / (1.0 + abs(repo.pop("rank", 0)))
+            repo["match_type"] = "fts"
+            results.append(repo)
+        return results
+
+
 def search(query: str, limit: int = 10) -> list[dict[str, Any]]:
-    """Combined semantic + keyword search."""
-    # 1. Vector search (if embeddings exist)
+    """Combined semantic + full-text search."""
+    # 1. Vector search
     try:
         vector_results = query_similar(query, limit=limit)
+        for r in vector_results:
+            r["match_type"] = "vector"
     except Exception as e:
         logger.warning(f"Vector search failed: {e}")
         vector_results = []
 
-    # 2. Keyword search
-    with get_db() as conn:
-        keyword_results = keyword_search(conn, query, limit=limit)
+    # 2. FTS5 search
+    try:
+        fts_results = fts_search(query, limit=limit)
+    except Exception as e:
+        logger.warning(f"FTS search failed: {e}")
+        fts_results = []
 
     # 3. Merge
-    return merge_results(vector_results, keyword_results, max_results=limit)
+    return merge_results(vector_results, fts_results, max_results=limit)
