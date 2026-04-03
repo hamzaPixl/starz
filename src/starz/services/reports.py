@@ -66,30 +66,57 @@ def generate_landscape_report(topic: str | None = None) -> str:
 
     context = _build_collection_context(category=topic)
 
-    prompt = f"""Analyze this GitHub starred repos collection and produce a structured landscape report in markdown.
+    prompt = f"""You are a technical analyst. Analyze this GitHub starred repos collection and write a polished landscape report.
 
-{f"Focus on: {topic}" if topic else "Cover the entire collection."}
+{f"Focus area: **{topic}**" if topic else "Scope: the entire collection."}
 
 Collection data:
 {context}
 
-Write the report with these sections:
-## Overview
-Brief summary of the collection's focus and depth.
+Write a clean, well-structured markdown report following this format exactly:
 
-## Key Repos
-The most notable/important repos, grouped by sub-category. Include stars and health score.
+# {"Collection" if not topic else topic} Landscape Report
 
-## Themes & Patterns
-What recurring themes, technology choices, or interests emerge?
+> One-line summary of the collection's focus.
 
-## Gaps & Recommendations
-What's missing? What complementary tools should the user explore?
+## At a Glance
 
-## Trend Signals
-Based on the repos, what technology trends is this person tracking?
+| Metric | Value |
+|--------|-------|
+| Total repos | ... |
+| Top language | ... |
+| Strongest area | ... |
+| Health | X% thriving |
 
-Keep it concise, data-driven, and actionable. Use the actual repo names and data provided."""
+## Highlights
+
+The 5-8 most important repos as a table:
+
+| Repo | What it does | Stars | Health |
+|------|-------------|-------|--------|
+| **owner/name** | One-sentence description | Xk | XX% |
+
+## Themes
+
+3-4 key themes you observe, each as a short paragraph with specific repo names as evidence.
+
+## Stack Coverage
+
+What technology areas are well-covered and what's missing. Be specific — name tools that would fill gaps.
+
+## Signals
+
+2-3 technology trends this person appears to be tracking, with evidence from the repos.
+
+---
+
+Rules:
+- Use **bold** for repo names, format stars as Xk
+- Keep descriptions to one sentence
+- Be specific, not generic. Reference actual repos.
+- Tables must be valid markdown
+- No filler phrases like "This is a comprehensive collection"
+- Total length: 400-600 words"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
@@ -128,24 +155,49 @@ def generate_deep_dive(topic: str) -> str:
                 )
             context = "\n".join(lines)
 
-    prompt = f"""Deep-dive analysis of "{topic}" repos in this GitHub stars collection.
+    prompt = f"""You are a technical analyst. Deep-dive into "{topic}" repos in this starred collection.
 
 {context}
 
-Write a detailed analysis in markdown:
-## Overview
-What does this person's {topic} collection look like?
+Write a polished markdown report following this format:
 
-## Tool Comparison
-Compare the alternatives — if there are multiple repos solving similar problems, how do they differ?
+# {topic} Deep Dive
+
+> One-line summary of coverage.
+
+## Inventory
+
+Table of all relevant repos:
+
+| Repo | Purpose | Stars | Health | Language |
+|------|---------|-------|--------|----------|
+| **owner/name** | What it solves | Xk | XX% | Lang |
+
+## Head-to-Head
+
+If there are alternatives that solve similar problems, compare them:
+
+| Feature | Repo A | Repo B |
+|---------|--------|--------|
+| Approach | ... | ... |
+| Best for | ... | ... |
 
 ## Recommended Stack
-Based on what's starred, what's the optimal combination?
 
-## What's Missing
-What important {topic} tools should they explore?
+The optimal combination from what's starred. Explain why each piece fits.
 
-Be specific — reference actual repo names and their characteristics."""
+## Gaps
+
+What's missing? Name specific tools or categories that would round out the {topic} toolkit.
+
+---
+
+Rules:
+- Use **bold** for repo names
+- Tables must be valid markdown
+- Be specific — every claim needs a repo name
+- No filler. Facts only.
+- 300-500 words"""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",

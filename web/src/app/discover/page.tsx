@@ -349,8 +349,46 @@ export default function DiscoverPage() {
                     </Button>
                   </div>
                 </div>
-                <div className="px-6 py-5 prose prose-invert prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <div className="px-6 py-5 max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-2">{children}</h1>,
+                      h2: ({ children }) => <h2 className="text-lg font-bold mb-3 mt-6 text-primary">{children}</h2>,
+                      h3: ({ children }) => <h3 className="text-base font-semibold mb-2 mt-4">{children}</h3>,
+                      p: ({ children }) => <p className="text-sm leading-relaxed mb-3 text-foreground/80">{children}</p>,
+                      strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                      a: ({ href, children }) => (
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{children}</a>
+                      ),
+                      ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-3 text-sm text-foreground/80">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-3 text-sm text-foreground/80">{children}</ol>,
+                      li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                      blockquote: ({ children }) => (
+                        <blockquote className="border-l-2 border-primary/30 pl-4 my-3 text-muted-foreground italic text-sm">{children}</blockquote>
+                      ),
+                      hr: () => <hr className="my-5 border-border" />,
+                      table: ({ children }) => (
+                        <div className="my-4 overflow-x-auto rounded-lg border border-border">
+                          <table className="w-full text-sm">{children}</table>
+                        </div>
+                      ),
+                      thead: ({ children }) => <thead className="bg-muted/50 text-left">{children}</thead>,
+                      th: ({ children }) => <th className="px-4 py-2.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">{children}</th>,
+                      td: ({ children }) => <td className="px-4 py-2.5 border-t border-border text-sm">{children}</td>,
+                      code: ({ className, children }) => {
+                        if (className?.includes("language-")) {
+                          return (
+                            <div className="my-3 rounded-lg bg-background border border-border overflow-hidden">
+                              <pre className="p-4 overflow-x-auto"><code className="text-xs font-mono">{children}</code></pre>
+                            </div>
+                          );
+                        }
+                        return <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-primary">{children}</code>;
+                      },
+                      pre: ({ children }) => <>{children}</>,
+                    }}
+                  >
                     {reportContent || deepDiveContent || exportContent || ""}
                   </ReactMarkdown>
                 </div>
