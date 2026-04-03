@@ -142,8 +142,8 @@ def query_similar(query: str, limit: int = 10) -> list[dict]:
             FROM repo_embeddings e
             INNER JOIN repos r ON r.id = e.repo_id
             WHERE e.embedding MATCH ?
+              AND k = ?
             ORDER BY e.distance
-            LIMIT ?
         """,
             (query_bytes, limit),
         ).fetchall()
