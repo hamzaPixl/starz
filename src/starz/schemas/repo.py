@@ -24,6 +24,7 @@ class RepoOut(BaseModel):
     created_at_gh: str | None = None
     archived: bool = False
     size_kb: int = 0
+    health_score: int = 0
 
 
 class RepoDetail(RepoOut):

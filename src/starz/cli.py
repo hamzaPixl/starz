@@ -59,6 +59,13 @@ def sync() -> None:
         f"({edges['similar']} similar, {edges['owner']} owner, {edges['topic']} topic)[/green]"
     )
 
+    # 5. Compute health scores
+    with console.status("[bold blue]Computing health scores..."):
+        from starz.services.github import compute_health_scores
+
+        scored = compute_health_scores()
+    console.print(f"[green]Scored {scored} repos[/green]")
+
     # Summary
     with get_db() as conn:
         stats = get_stats(conn)

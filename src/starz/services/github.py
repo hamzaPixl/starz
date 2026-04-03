@@ -200,3 +200,98 @@ async def sync_from_github(
             "updated": updated_count,
             "skipped_readmes": len(existing_repos),
         }
+
+
+def compute_health_scores() -> int:
+    """Compute health scores for all repos. Returns count updated."""
+    import math
+    from datetime import datetime, timezone
+
+    count = 0
+    now = datetime.now(timezone.utc)
+
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT id, pushed_at, stargazers_count, forks_count,
+                   open_issues_count, has_wiki, has_pages, archived
+            FROM repos
+        """).fetchall()
+
+        for row in rows:
+            score = 0.0
+
+            # Recency of last push (40 points max)
+            pushed_at = row["pushed_at"]
+            if pushed_at:
+                try:
+                    pushed = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
+                    days_ago = (now - pushed).days
+                    if days_ago < 7:
+                        score += 40
+                    elif days_ago < 30:
+                        score += 35
+                    elif days_ago < 90:
+                        score += 25
+                    elif days_ago < 180:
+                        score += 15
+                    elif days_ago < 365:
+                        score += 8
+                    else:
+                        score += 2
+                except Exception:
+                    score += 5  # unknown = low
+
+            # Star count (20 points max, logarithmic)
+            stars = row["stargazers_count"] or 0
+            if stars > 0:
+                star_score = min(20, math.log10(stars + 1) * 5)
+                score += star_score
+
+            # Fork/star ratio -- community engagement (10 points)
+            forks = row["forks_count"] or 0
+            if stars > 0:
+                ratio = forks / stars
+                if ratio > 0.3:
+                    score += 10
+                elif ratio > 0.1:
+                    score += 7
+                elif ratio > 0.05:
+                    score += 4
+                else:
+                    score += 2
+
+            # Issue management (10 points)
+            issues = row["open_issues_count"] or 0
+            if stars > 100:
+                issue_ratio = issues / stars
+                if issue_ratio < 0.01:
+                    score += 10  # well managed
+                elif issue_ratio < 0.05:
+                    score += 7
+                elif issue_ratio < 0.1:
+                    score += 4
+                else:
+                    score += 1
+            else:
+                score += 5  # small projects get neutral
+
+            # Has wiki (5 points)
+            if row["has_wiki"]:
+                score += 5
+
+            # Has pages (5 points)
+            if row["has_pages"]:
+                score += 5
+
+            # Not archived (10 points)
+            if not row["archived"]:
+                score += 10
+
+            final_score = min(100, max(0, int(round(score))))
+            conn.execute(
+                "UPDATE repos SET health_score = ? WHERE id = ?",
+                (final_score, row["id"]),
+            )
+            count += 1
+
+    return count
