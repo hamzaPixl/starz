@@ -1,0 +1,419 @@
+{
+  "project": "starz",
+  "generated_at": "2026-04-03T17:15:00Z",
+  "source": ".context/prd.md",
+  "requirements_source": ".context/spec/requirements.json",
+  "total_tasks": 21,
+  "size_distribution": { "S": 9, "M": 10, "L": 2 },
+  "estimated_effort": "~35-45 hours",
+  "critical_path": ["T-01", "T-02", "T-03", "T-04", "T-06", "T-07", "T-09", "T-10", "T-13", "T-16", "T-18"],
+  "critical_path_length": 11,
+  "parallelizable_groups": [
+    { "group": "A", "tasks": ["T-04", "T-05"], "note": "GitHub service + Pydantic schemas in parallel" },
+    { "group": "B", "tasks": ["T-06", "T-07"], "note": "Embeddings + categorizer in parallel" },
+    { "group": "C", "tasks": ["T-11", "T-12"], "note": "Stats + sync status endpoints in parallel" },
+    { "group": "D", "tasks": ["T-14", "T-15", "T-16"], "note": "Web components can be built in parallel" }
+  ],
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Project scaffold: pyproject.toml, src layout, CLI entry point",
+      "size": "M",
+      "requirements": ["R-150"],
+      "agent": "backend-engineer",
+      "blocks": ["T-02", "T-03", "T-04", "T-05"],
+      "blockedBy": [],
+      "description": "Initialize git repo. Create pyproject.toml with src layout, all Python dependencies, and [project.scripts] starz = 'starz.cli:app'. Create src/starz/__init__.py, src/starz/cli.py with typer app stub (--help works), .gitignore, .env.example, LICENSE (MIT), Makefile with dev/install targets.",
+      "files": ["pyproject.toml", "src/starz/__init__.py", "src/starz/cli.py", "Makefile", ".gitignore", ".env.example", "LICENSE"],
+      "acceptance_criteria": [
+        "pip install -e . succeeds",
+        "starz --help shows available commands",
+        "src layout with src/starz/ package",
+        "pyproject.toml has all dependencies listed",
+        "MIT LICENSE file present"
+      ],
+      "verification": "pip install -e . && starz --help"
+    },
+    {
+      "id": "T-02",
+      "title": "Config module: env loading, XDG data paths",
+      "size": "S",
+      "requirements": [],
+      "agent": "backend-engineer",
+      "blocks": ["T-03"],
+      "blockedBy": ["T-01"],
+      "description": "Create src/starz/config.py. Load GITHUB_TOKEN (fallback to subprocess gh auth token), OPENAI_API_KEY, ANTHROPIC_API_KEY from env or .env file. Define data_dir as ~/.starz/ (XDG_DATA_HOME fallback). Define db_path as data_dir/starz.db. Auto-create data_dir on import.",
+      "files": ["src/starz/config.py"],
+      "acceptance_criteria": [
+        "Config loads env vars from .env and environment",
+        "gh auth token fallback works when GITHUB_TOKEN not set",
+        "~/.starz/ directory created automatically",
+        "db_path resolves to ~/.starz/starz.db"
+      ],
+      "verification": "python -c 'from starz.config import settings; print(settings.db_path)'"
+    },
+    {
+      "id": "T-03",
+      "title": "Database layer: SQLite + sqlite-vec client and schema",
+      "size": "M",
+      "requirements": ["R-003", "R-151"],
+      "agent": "backend-engineer",
+      "blocks": ["T-04", "T-06", "T-07", "T-08"],
+      "blockedBy": ["T-02"],
+      "description": "Create src/starz/db/schema.sql with repos table and repo_embeddings vec0 virtual table (exact DDL from PRD). Create src/starz/db/client.py with get_db() context manager that loads sqlite-vec extension, runs schema.sql on first use, and provides cursor. Include upsert_repo() and get_repos() helper functions.",
+      "files": ["src/starz/db/__init__.py", "src/starz/db/client.py", "src/starz/db/schema.sql"],
+      "acceptance_criteria": [
+        "sqlite-vec extension loads successfully",
+        "Schema creates repos table with all columns from PRD",
+        "Schema creates repo_embeddings vec0 virtual table with FLOAT[1536]",
+        "Indexes on category and language created",
+        "Upsert works: insert new, update existing on full_name conflict",
+        "get_db() auto-creates schema on first call"
+      ],
+      "verification": "python -c 'from starz.db.client import get_db; db = get_db(); print(db.execute(\"SELECT name FROM sqlite_master\").fetchall())'"
+    },
+    {
+      "id": "T-04",
+      "title": "GitHub service: fetch stars + READMEs",
+      "size": "L",
+      "requirements": ["R-001", "R-002", "R-101"],
+      "agent": "backend-engineer",
+      "blocks": ["T-06", "T-07", "T-08"],
+      "blockedBy": ["T-03"],
+      "description": "Create src/starz/services/github.py. Implement fetch_starred_repos() using httpx.AsyncClient with GitHub token. Paginate GET /user/starred?per_page=100 with Accept: application/vnd.github.star+json header. Implement fetch_readmes() with asyncio.Semaphore(10) for concurrency, 5s timeout per request, base64 decode, truncate to 4000 chars. Combine into sync_from_github() that fetches repos, fetches READMEs, and upserts all into DB.",
+      "files": ["src/starz/services/__init__.py", "src/starz/services/github.py"],
+      "acceptance_criteria": [
+        "All starred repos fetched across all pages",
+        "starred_at captured per repo",
+        "READMEs fetched in parallel (max 10 concurrent)",
+        "5s timeout per README — missing READMEs handled gracefully",
+        "READMEs truncated to 4000 chars",
+        "All repos upserted into DB with synced_at timestamp",
+        "Works with both GITHUB_TOKEN env and gh auth token fallback"
+      ],
+      "verification": "starz sync (after T-08 wires it) — check DB has repos with readme_content"
+    },
+    {
+      "id": "T-05",
+      "title": "Pydantic schemas: repo and chat models",
+      "size": "S",
+      "requirements": [],
+      "agent": "backend-engineer",
+      "blocks": ["T-10", "T-11", "T-12", "T-13"],
+      "blockedBy": ["T-01"],
+      "description": "Create src/starz/schemas/repo.py with RepoOut (API response), RepoList (paginated), RepoFilters (query params). Create src/starz/schemas/chat.py with ChatRequest (query + history), ChatResponse (answer + sources). All models use Pydantic v2.",
+      "files": ["src/starz/schemas/__init__.py", "src/starz/schemas/repo.py", "src/starz/schemas/chat.py"],
+      "acceptance_criteria": [
+        "RepoOut includes all display fields (full_name, description, language, category, summary, html_url, etc.)",
+        "RepoFilters accepts category, language, q as optional query params",
+        "ChatRequest has query (str) and history (optional list of messages)",
+        "ChatResponse has answer (str) and sources (list of repo references)"
+      ],
+      "verification": "python -c 'from starz.schemas.repo import RepoOut; print(RepoOut.model_json_schema())'"
+    },
+    {
+      "id": "T-06",
+      "title": "Embedding service: OpenAI vector generation + sqlite-vec storage",
+      "size": "M",
+      "requirements": ["R-004"],
+      "agent": "backend-engineer",
+      "blocks": ["T-08", "T-09"],
+      "blockedBy": ["T-03"],
+      "description": "Create src/starz/services/embeddings.py. Implement embed_text(text) using OpenAI text-embedding-3-small. Implement embed_repos(repos) that builds combined text (name + desc + language + topics + README), calls OpenAI in batches, stores in repo_embeddings table, and updates embedding_text column. Implement query_similar(query_text, limit=10) that embeds the query and runs vec0 distance search.",
+      "files": ["src/starz/services/embeddings.py"],
+      "acceptance_criteria": [
+        "Embedding generated from combined repo text",
+        "1536-dim vectors stored in repo_embeddings",
+        "embedding_text field updated in repos table",
+        "Batch embedding to minimize API calls",
+        "query_similar returns top-N repos by vector distance",
+        "Skips repos that already have embeddings on re-run"
+      ],
+      "verification": "After sync with embeddings, run: python -c 'from starz.services.embeddings import query_similar; print(query_similar(\"react\"))'"
+    },
+    {
+      "id": "T-07",
+      "title": "Categorizer service: Claude Haiku batch classification",
+      "size": "M",
+      "requirements": ["R-005"],
+      "agent": "backend-engineer",
+      "blocks": ["T-08"],
+      "blockedBy": ["T-03"],
+      "description": "Create src/starz/services/categorizer.py. Define CATEGORIES list (~15 categories from PRD). Implement categorize_repos(repos) that batches 20 repos per Claude Haiku call, sends name/description/language/topics, requests JSON response with category + summary per repo, updates DB. Idempotent: skips repos with existing category.",
+      "files": ["src/starz/services/categorizer.py"],
+      "acceptance_criteria": [
+        "20 repos per batch API call",
+        "Each repo gets one of ~15 predefined categories",
+        "2-3 sentence summary generated per repo",
+        "Category + summary stored in repos table",
+        "Skips already-categorized repos",
+        "Handles Anthropic API errors gracefully (skip batch, continue)"
+      ],
+      "verification": "After sync with categorizer, check: SELECT category, COUNT(*) FROM repos GROUP BY category"
+    },
+    {
+      "id": "T-08",
+      "title": "Sync CLI command: wire fetch + embed + categorize pipeline",
+      "size": "S",
+      "requirements": ["R-006"],
+      "agent": "backend-engineer",
+      "blocks": ["T-09", "T-10"],
+      "blockedBy": ["T-04", "T-06", "T-07"],
+      "description": "Wire starz sync CLI command in cli.py. Call github.sync_from_github(), then embeddings.embed_repos(), then categorizer.categorize_repos(). Use rich.progress for terminal progress bars. Print summary on completion (N repos synced, N new, N categorized).",
+      "files": ["src/starz/cli.py"],
+      "acceptance_criteria": [
+        "starz sync runs full pipeline: fetch → embed → categorize",
+        "Progress bars shown in terminal via rich",
+        "Summary printed on completion",
+        "Graceful error handling — partial progress preserved",
+        "Re-running sync is incremental (skips existing)"
+      ],
+      "verification": "starz sync — should populate DB with repos, embeddings, and categories"
+    },
+    {
+      "id": "T-09",
+      "title": "Search service + CLI command: vector + keyword search",
+      "size": "M",
+      "requirements": ["R-008", "R-017"],
+      "agent": "backend-engineer",
+      "blocks": ["T-10", "T-13"],
+      "blockedBy": ["T-06", "T-08"],
+      "description": "Create src/starz/services/search.py. Implement vector_search(query, limit) using embeddings.query_similar(). Implement keyword_search(query, limit) that matches on language/topics/name. Implement search(query) that merges both, deduplicates, and returns ranked results. Add starz search 'query' CLI command that prints results as a rich table.",
+      "files": ["src/starz/services/search.py", "src/starz/cli.py"],
+      "acceptance_criteria": [
+        "Vector search returns semantically relevant repos",
+        "Keyword search boosts by language/topic match",
+        "Results merged and deduplicated",
+        "starz search 'react animation' prints relevant results in terminal",
+        "Each result shows: name, category, description, link"
+      ],
+      "verification": "starz search 'python web scraping' — verify relevant results appear"
+    },
+    {
+      "id": "T-10",
+      "title": "Chat service + CLI command: RAG pipeline",
+      "size": "M",
+      "requirements": ["R-009"],
+      "agent": "backend-engineer",
+      "blocks": ["T-13"],
+      "blockedBy": ["T-09"],
+      "description": "Create src/starz/services/chat.py. Implement chat(query, history) that: embeds query, retrieves top-10 repos via search service, builds context prompt with repo details, calls Claude Sonnet, returns response. Add starz chat CLI command that runs an interactive REPL (prompt → response loop) using rich for formatting.",
+      "files": ["src/starz/services/chat.py", "src/starz/cli.py"],
+      "acceptance_criteria": [
+        "Chat retrieves relevant repos as context",
+        "Claude Sonnet generates natural language answer with repo links",
+        "Conversation history sent with each request",
+        "starz chat opens interactive REPL",
+        "Handles 'no match' gracefully"
+      ],
+      "verification": "starz chat → ask 'what testing libraries do I have?' → verify accurate response"
+    },
+    {
+      "id": "T-11",
+      "title": "FastAPI server: app factory + repo/stats endpoints",
+      "size": "M",
+      "requirements": ["R-007", "R-010", "R-011"],
+      "agent": "backend-engineer",
+      "blocks": ["T-13", "T-16"],
+      "blockedBy": ["T-03", "T-05"],
+      "description": "Create src/starz/server.py with FastAPI app factory. Create src/starz/endpoints/repos.py with GET /api/repos (filters: category, language, q), GET /api/repos/{id}. Create stats endpoint GET /api/stats returning counts by category/language. Add CORS middleware for localhost origins.",
+      "files": ["src/starz/server.py", "src/starz/endpoints/__init__.py", "src/starz/endpoints/repos.py"],
+      "acceptance_criteria": [
+        "GET /api/repos returns paginated repo list",
+        "Supports ?category=, ?language=, ?q= filters",
+        "GET /api/repos/{id} returns single repo or 404",
+        "GET /api/stats returns category/language counts",
+        "CORS allows localhost:3000 and localhost:7827"
+      ],
+      "verification": "starz serve & curl http://localhost:7827/api/repos"
+    },
+    {
+      "id": "T-12",
+      "title": "API endpoints: sync + sync status",
+      "size": "S",
+      "requirements": ["R-006", "R-012"],
+      "agent": "backend-engineer",
+      "blocks": ["T-16"],
+      "blockedBy": ["T-05", "T-08"],
+      "description": "Create src/starz/endpoints/sync.py with POST /api/sync (triggers background sync pipeline) and GET /api/sync/status (returns current state: idle/fetching/embedding/categorizing/done + progress counts). Use a simple module-level state dict for sync status tracking.",
+      "files": ["src/starz/endpoints/sync.py"],
+      "acceptance_criteria": [
+        "POST /api/sync triggers sync pipeline in background task",
+        "GET /api/sync/status returns current state and progress",
+        "Multiple concurrent POST /api/sync calls are rejected (already syncing)",
+        "Status resets to idle after completion"
+      ],
+      "verification": "curl -X POST localhost:7827/api/sync && curl localhost:7827/api/sync/status"
+    },
+    {
+      "id": "T-13",
+      "title": "API endpoints: search + chat",
+      "size": "S",
+      "requirements": ["R-008", "R-009"],
+      "agent": "backend-engineer",
+      "blocks": ["T-16"],
+      "blockedBy": ["T-09", "T-10", "T-11"],
+      "description": "Create src/starz/endpoints/search.py with POST /api/search (body: {query, limit}). Create src/starz/endpoints/chat.py with POST /api/chat (body: {query, history}). Both delegate to their respective services. Wire starz serve command in cli.py to start uvicorn on port 7827.",
+      "files": ["src/starz/endpoints/search.py", "src/starz/endpoints/chat.py", "src/starz/cli.py"],
+      "acceptance_criteria": [
+        "POST /api/search returns ranked repo results with scores",
+        "POST /api/chat returns natural language answer with sources",
+        "starz serve starts uvicorn on port 7827",
+        "All 7 API endpoints accessible"
+      ],
+      "verification": "curl -X POST localhost:7827/api/search -d '{\"query\": \"react animation\"}'"
+    },
+    {
+      "id": "T-14",
+      "title": "Web scaffold: Next.js + Tailwind + shadcn/ui with static export",
+      "size": "M",
+      "requirements": ["R-152"],
+      "agent": "frontend-engineer",
+      "blocks": ["T-15", "T-16", "T-17"],
+      "blockedBy": ["T-01"],
+      "description": "Initialize web/ with create-next-app. Configure next.config.ts for output: 'export'. Install Tailwind CSS + shadcn/ui. Create src/lib/api.ts fetch wrapper pointing at localhost:7827/api. Create layout.tsx with Inter font, dark mode support. Create empty page.tsx shell.",
+      "files": ["web/package.json", "web/next.config.ts", "web/src/app/layout.tsx", "web/src/app/page.tsx", "web/src/lib/api.ts"],
+      "acceptance_criteria": [
+        "next build produces static export in web/out/",
+        "shadcn/ui components installable via CLI",
+        "API wrapper configured for backend URL",
+        "Layout has proper metadata and font setup",
+        "Dark mode via class strategy"
+      ],
+      "verification": "cd web && bun run build — check out/ directory exists"
+    },
+    {
+      "id": "T-15",
+      "title": "Web: repo browse page — grid, cards, filters, search bar",
+      "size": "M",
+      "requirements": ["R-013"],
+      "agent": "frontend-engineer",
+      "blocks": ["T-17"],
+      "blockedBy": ["T-14"],
+      "description": "Build the main browse experience. Create repo-card.tsx (name, description, language badge, category badge, star count, link). Create repo-grid.tsx (responsive grid, loading skeleton). Create search-bar.tsx (text input, triggers /api/repos?q=). Create category-filter.tsx (sidebar with category counts from /api/stats). Wire page.tsx to compose all components with state management.",
+      "files": ["web/src/components/repo-card.tsx", "web/src/components/repo-grid.tsx", "web/src/components/search-bar.tsx", "web/src/components/category-filter.tsx", "web/src/app/page.tsx"],
+      "acceptance_criteria": [
+        "Repo cards show: name, description, language, category, stars, link",
+        "Grid is responsive (1-3 columns)",
+        "Search bar filters via API text search",
+        "Category sidebar shows counts and filters on click",
+        "Language filter works",
+        "Loading skeletons while fetching"
+      ],
+      "verification": "Open localhost:3000 — browse repos, click categories, search by text"
+    },
+    {
+      "id": "T-16",
+      "title": "Web: chat panel component",
+      "size": "M",
+      "requirements": ["R-014"],
+      "agent": "frontend-engineer",
+      "blocks": ["T-17"],
+      "blockedBy": ["T-13", "T-14"],
+      "description": "Build chat-panel.tsx. Message list with user/assistant bubbles. Input with send button. Client-side history (useState array). POST to /api/chat with query + history. Parse response, render repo links as clickable. Auto-scroll to bottom on new message. Integrate into page.tsx as a slide-out or side panel.",
+      "files": ["web/src/components/chat-panel.tsx", "web/src/app/page.tsx"],
+      "acceptance_criteria": [
+        "Message input with send button",
+        "User and assistant messages displayed as conversation",
+        "History maintained in client state during session",
+        "Repo names in responses rendered as clickable links",
+        "Loading indicator while waiting for response",
+        "Auto-scroll to latest message"
+      ],
+      "verification": "Open chat, ask 'what React libraries do I have?' — verify answer with links"
+    },
+    {
+      "id": "T-17",
+      "title": "Web: sync button + static bundle into Python package",
+      "size": "S",
+      "requirements": ["R-015"],
+      "agent": "fullstack-engineer",
+      "blocks": ["T-18"],
+      "blockedBy": ["T-15", "T-16"],
+      "description": "Build sync-button.tsx that triggers POST /api/sync, polls GET /api/sync/status for progress, shows progress bar, refreshes repo grid on completion. Add Makefile target: make build-web that runs next build in web/ and copies out/ to src/starz/static/. Update server.py to mount StaticFiles from static/ directory. Update pyproject.toml to include static/ in package data.",
+      "files": ["web/src/components/sync-button.tsx", "Makefile", "src/starz/server.py", "pyproject.toml"],
+      "acceptance_criteria": [
+        "Sync button triggers sync and shows progress",
+        "Grid refreshes after sync completes",
+        "make build-web produces src/starz/static/ with bundled frontend",
+        "starz serve serves both API and static UI on port 7827",
+        "Static files included in Python package"
+      ],
+      "verification": "make build-web && starz serve — open localhost:7827 in browser"
+    },
+    {
+      "id": "T-18",
+      "title": "OSS polish: README, .env.example, error handling",
+      "size": "S",
+      "requirements": ["R-102"],
+      "agent": "fullstack-engineer",
+      "blocks": ["T-19"],
+      "blockedBy": ["T-17"],
+      "description": "Write README.md with: badges, install command, quickstart (3 steps), screenshots placeholder, CLI reference, API reference, contributing section. Update .env.example with all 3 vars documented. Add consistent error handling across all services (try/except with logging, skip-and-continue pattern). Add empty state UI when no repos synced yet.",
+      "files": ["README.md", ".env.example", "src/starz/services/github.py", "src/starz/services/embeddings.py", "src/starz/services/categorizer.py"],
+      "acceptance_criteria": [
+        "README has install + quickstart instructions",
+        "README has CLI and API reference",
+        ".env.example documents all required vars",
+        "GitHub API failure doesn't crash sync",
+        "OpenAI failure skips repo, continues",
+        "Anthropic failure skips batch, continues",
+        "Web UI shows helpful empty state before first sync"
+      ],
+      "verification": "Read README, follow quickstart from scratch"
+    },
+    {
+      "id": "T-19",
+      "title": "PyPI packaging: metadata, classifiers, entry points",
+      "size": "S",
+      "requirements": [],
+      "agent": "backend-engineer",
+      "blocks": ["T-20"],
+      "blockedBy": ["T-18"],
+      "description": "Finalize pyproject.toml for PyPI publishing. Add: project name, version, description, author, license, classifiers, requires-python >= 3.11, readme = README.md, [project.urls] for GitHub. Ensure [project.scripts] starz = 'starz.cli:app'. Add [tool.hatch.build] or [tool.setuptools.package-data] to include static/ directory. Test: pip install . from clean venv.",
+      "files": ["pyproject.toml"],
+      "acceptance_criteria": [
+        "pip install . works in clean venv",
+        "starz command available after install",
+        "Static files included in installed package",
+        "Package metadata correct for PyPI"
+      ],
+      "verification": "python -m venv /tmp/test-starz && source /tmp/test-starz/bin/activate && pip install . && starz --help"
+    },
+    {
+      "id": "T-20",
+      "title": "Incremental sync: diff-based re-sync",
+      "size": "S",
+      "requirements": ["R-016"],
+      "agent": "backend-engineer",
+      "blocks": [],
+      "blockedBy": ["T-08"],
+      "description": "Update github.sync_from_github() to diff fetched repos against existing DB records on full_name. Only fetch READMEs for new repos. Update embeddings.embed_repos() to skip repos with existing embeddings. Categorizer already skips categorized repos (idempotent). Print 'N new, N updated, N skipped' summary.",
+      "files": ["src/starz/services/github.py", "src/starz/services/embeddings.py"],
+      "acceptance_criteria": [
+        "Second starz sync only processes new/changed repos",
+        "README fetch skipped for existing repos",
+        "Embedding generation skipped for repos with embeddings",
+        "Summary shows new/updated/skipped counts"
+      ],
+      "verification": "Run starz sync twice — second run should be much faster"
+    },
+    {
+      "id": "T-21",
+      "title": "CLAUDE.md: project conventions and operational rules",
+      "size": "S",
+      "requirements": [],
+      "agent": "doc-updater",
+      "blocks": [],
+      "blockedBy": ["T-18"],
+      "description": "Update CLAUDE.md with: project description, tech stack summary, directory structure, dev commands (make dev, starz sync, starz serve), testing instructions, contribution guidelines reference, key architectural decisions.",
+      "files": ["CLAUDE.md"],
+      "acceptance_criteria": [
+        "CLAUDE.md accurately describes the project",
+        "Dev workflow documented",
+        "Key commands listed"
+      ],
+      "verification": "Read CLAUDE.md — should be sufficient for a new contributor to get started"
+    }
+  ]
+}

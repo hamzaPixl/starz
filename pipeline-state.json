@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "started_at": "2026-04-03T17:20:00Z",
+  "updated_at": "2026-04-03T17:20:00Z",
+  "prd_source": ".context/prd.md",
+  "current_phase": "foundation",
+  "phases": {
+    "setup": { "status": "completed", "started_at": "2026-04-03T16:45:00Z", "completed_at": "2026-04-03T16:56:00Z" },
+    "planning": { "status": "completed", "started_at": "2026-04-03T16:56:00Z", "completed_at": "2026-04-03T17:20:00Z" },
+    "foundation": { "status": "in_progress", "started_at": "2026-04-03T17:25:00Z" },
+    "implementation": { "status": "pending" },
+    "quality": { "status": "pending" },
+    "delivery": { "status": "pending" },
+    "finalization": { "status": "pending" }
+  },
+  "sprints_completed": 0,
+  "total_sprints": 3,
+  "coverage_percentage": 0.0,
+  "branch": "main"
+}

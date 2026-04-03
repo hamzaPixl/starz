@@ -1,0 +1,367 @@
+{
+  "source": ".context/prd.md",
+  "generated_at": "2026-04-03T17:00:00Z",
+  "total": 28,
+  "by_priority": { "must": 14, "should": 8, "could": 6 },
+  "by_category": { "functional": 20, "non-functional": 5, "constraint": 3 },
+  "requirements": [
+    {
+      "id": "R-001",
+      "category": "functional",
+      "summary": "System fetches all GitHub starred repos for the authenticated user via paginated API calls",
+      "acceptance_criteria": [
+        "All starred repos are fetched (not just first page)",
+        "Pagination handles 100 repos per page",
+        "Starred_at timestamp is captured for each repo",
+        "Works with gh auth token for authentication"
+      ],
+      "priority": "must",
+      "search_hints": ["github_service", "fetch_stars", "/user/starred", "paginate", "starred_at"]
+    },
+    {
+      "id": "R-002",
+      "category": "functional",
+      "summary": "System extracts README content for each starred repo",
+      "acceptance_criteria": [
+        "README fetched via GitHub API for each repo",
+        "READMEs fetched in parallel (10 concurrent)",
+        "Timeout of 5s per README request",
+        "Graceful fallback when README is missing or too large",
+        "README truncated to 4000 characters"
+      ],
+      "priority": "must",
+      "search_hints": ["readme_content", "fetch_readme", "/repos/{owner}/{repo}/readme", "truncate"]
+    },
+    {
+      "id": "R-003",
+      "category": "functional",
+      "summary": "System stores repo metadata in SQLite database",
+      "acceptance_criteria": [
+        "Repos table created with all schema fields (full_name, name, owner, description, language, topics, etc.)",
+        "full_name is unique constraint",
+        "topics stored as JSON array text",
+        "Upsert on re-sync (update existing, insert new)",
+        "synced_at timestamp recorded"
+      ],
+      "priority": "must",
+      "search_hints": ["repos", "CREATE TABLE", "upsert", "db/schema.sql", "db/client.py"]
+    },
+    {
+      "id": "R-004",
+      "category": "functional",
+      "summary": "System generates vector embeddings for each repo using OpenAI text-embedding-3-small",
+      "acceptance_criteria": [
+        "Embedding generated from combined text: name + description + language + topics + README",
+        "Embedding stored in sqlite-vec virtual table",
+        "1536-dimension float vectors",
+        "embedding_text field stores the source text for debugging"
+      ],
+      "priority": "must",
+      "search_hints": ["embedding_service", "text-embedding-3-small", "repo_embeddings", "vec0", "embed_text"]
+    },
+    {
+      "id": "R-005",
+      "category": "functional",
+      "summary": "System auto-categorizes repos using Claude Haiku in batch calls",
+      "acceptance_criteria": [
+        "Repos batched in groups of 20 for categorization",
+        "Each repo assigned one of ~15 predefined categories",
+        "2-3 sentence summary generated per repo",
+        "Category and summary stored in repos table",
+        "Idempotent: skips repos already categorized on re-run"
+      ],
+      "priority": "must",
+      "search_hints": ["categorizer", "claude-haiku", "batch", "category", "summary", "taxonomy"]
+    },
+    {
+      "id": "R-006",
+      "category": "functional",
+      "summary": "POST /api/sync endpoint triggers full star sync pipeline (fetch + embed + categorize)",
+      "acceptance_criteria": [
+        "Endpoint accepts POST request",
+        "Runs fetch, embedding, and categorization sequentially",
+        "Returns sync status/progress",
+        "Handles errors gracefully without losing partial progress"
+      ],
+      "priority": "must",
+      "search_hints": ["sync.py", "POST /api/sync", "sync_stars", "endpoints/sync"]
+    },
+    {
+      "id": "R-007",
+      "category": "functional",
+      "summary": "GET /api/repos endpoint lists repos with filtering by category, language, and text query",
+      "acceptance_criteria": [
+        "Returns paginated list of repos",
+        "Supports ?category= filter",
+        "Supports ?language= filter",
+        "Supports ?q= text search on name/description",
+        "Returns repo metadata including category and summary"
+      ],
+      "priority": "must",
+      "search_hints": ["repos.py", "GET /api/repos", "list_repos", "endpoints/repos", "category", "language"]
+    },
+    {
+      "id": "R-008",
+      "category": "functional",
+      "summary": "POST /api/search endpoint performs semantic vector search across starred repos",
+      "acceptance_criteria": [
+        "Query text is embedded using same model as repos",
+        "Vector similarity search returns top-10 results",
+        "Optional keyword boost from language/topic matching",
+        "Results merged and deduplicated",
+        "Each result includes repo metadata and relevance score"
+      ],
+      "priority": "must",
+      "search_hints": ["search.py", "POST /api/search", "vector_search", "semantic", "search_service"]
+    },
+    {
+      "id": "R-009",
+      "category": "functional",
+      "summary": "POST /api/chat endpoint provides RAG-powered conversational search over starred repos",
+      "acceptance_criteria": [
+        "Accepts user question + optional conversation history",
+        "Retrieves relevant repos via vector search",
+        "Sends context + query to Claude Sonnet for natural language response",
+        "Response includes repo names as links",
+        "Acknowledges when no good match exists"
+      ],
+      "priority": "must",
+      "search_hints": ["chat.py", "POST /api/chat", "chat_service", "RAG", "conversation"]
+    },
+    {
+      "id": "R-010",
+      "category": "functional",
+      "summary": "GET /api/repos/{id} returns detailed information for a single repo",
+      "acceptance_criteria": [
+        "Returns full repo metadata including README content",
+        "Returns 404 if repo not found"
+      ],
+      "priority": "should",
+      "search_hints": ["repos.py", "GET /api/repos/{id}", "get_repo", "repo_id"]
+    },
+    {
+      "id": "R-011",
+      "category": "functional",
+      "summary": "GET /api/stats returns aggregate counts by category and language",
+      "acceptance_criteria": [
+        "Returns total repo count",
+        "Returns count grouped by category",
+        "Returns count grouped by language"
+      ],
+      "priority": "should",
+      "search_hints": ["stats", "GET /api/stats", "count", "GROUP BY"]
+    },
+    {
+      "id": "R-012",
+      "category": "functional",
+      "summary": "GET /api/sync/status returns current sync progress",
+      "acceptance_criteria": [
+        "Returns current sync state (idle, fetching, embedding, categorizing, done)",
+        "Returns progress percentage or counts",
+        "Supports polling from the UI"
+      ],
+      "priority": "should",
+      "search_hints": ["sync_status", "GET /api/sync/status", "progress"]
+    },
+    {
+      "id": "R-013",
+      "category": "functional",
+      "summary": "Web UI displays a searchable grid of starred repos with category and language filters",
+      "acceptance_criteria": [
+        "Repo cards show name, description, language, category, star count, and link",
+        "Category filter sidebar narrows results",
+        "Language filter narrows results",
+        "Search bar filters by text"
+      ],
+      "priority": "must",
+      "search_hints": ["repo-grid", "repo-card", "category-filter", "search-bar", "page.tsx"]
+    },
+    {
+      "id": "R-014",
+      "category": "functional",
+      "summary": "Web UI includes a chat panel for conversational search",
+      "acceptance_criteria": [
+        "Message input with send button",
+        "Messages displayed in conversation thread",
+        "Chat history maintained client-side during session",
+        "Responses include clickable repo links"
+      ],
+      "priority": "must",
+      "search_hints": ["chat-panel", "ChatPanel", "messages", "conversation"]
+    },
+    {
+      "id": "R-015",
+      "category": "functional",
+      "summary": "Web UI includes a sync button to trigger star synchronization",
+      "acceptance_criteria": [
+        "Button triggers POST /api/sync",
+        "Shows loading/progress state during sync",
+        "Refreshes repo grid after sync completes"
+      ],
+      "priority": "must",
+      "search_hints": ["sync-button", "SyncButton", "trigger sync"]
+    },
+    {
+      "id": "R-016",
+      "category": "functional",
+      "summary": "Incremental sync only processes new/updated repos since last sync",
+      "acceptance_criteria": [
+        "Diff against existing DB records on full_name",
+        "Only fetch READMEs for new repos",
+        "Only generate embeddings for new/changed repos",
+        "Only categorize uncategorized repos"
+      ],
+      "priority": "should",
+      "search_hints": ["incremental", "diff", "new_repos", "synced_at"]
+    },
+    {
+      "id": "R-017",
+      "category": "functional",
+      "summary": "Keyword search boosts vector search results using language and topic matching",
+      "acceptance_criteria": [
+        "If query mentions a language, repos in that language are boosted",
+        "If query mentions a topic, repos with that topic are boosted",
+        "Keyword results merged with vector results and deduplicated"
+      ],
+      "priority": "should",
+      "search_hints": ["keyword_search", "keyword_boost", "merge_results", "deduplicate"]
+    },
+    {
+      "id": "R-018",
+      "category": "functional",
+      "summary": "Streaming chat responses via Server-Sent Events",
+      "acceptance_criteria": [
+        "Chat endpoint supports SSE streaming",
+        "UI displays tokens as they arrive",
+        "Graceful handling of stream interruption"
+      ],
+      "priority": "could",
+      "search_hints": ["SSE", "streaming", "EventSourceResponse", "stream"]
+    },
+    {
+      "id": "R-019",
+      "category": "functional",
+      "summary": "Similar repos feature finds repos related to a given repo",
+      "acceptance_criteria": [
+        "Given a repo ID, returns top-5 most similar repos by vector distance",
+        "Accessible from repo detail view"
+      ],
+      "priority": "could",
+      "search_hints": ["similar_repos", "related", "vector_distance"]
+    },
+    {
+      "id": "R-020",
+      "category": "functional",
+      "summary": "Export starred repos as markdown or JSON",
+      "acceptance_criteria": [
+        "Export all repos grouped by category",
+        "Include name, description, link, and summary",
+        "Support both .md and .json format"
+      ],
+      "priority": "could",
+      "search_hints": ["export", "markdown", "download", "json_export"]
+    },
+    {
+      "id": "R-100",
+      "category": "non-functional",
+      "summary": "API response time under 500ms for list and search endpoints",
+      "acceptance_criteria": [
+        "GET /api/repos responds in < 500ms",
+        "POST /api/search responds in < 500ms",
+        "POST /api/chat responds in < 5s (LLM-bound)"
+      ],
+      "priority": "should",
+      "search_hints": ["response_time", "performance", "latency"],
+      "notes": "[inferred — industry default for personal tool]"
+    },
+    {
+      "id": "R-101",
+      "category": "non-functional",
+      "summary": "Sync pipeline handles 500+ repos without timeout or memory issues",
+      "acceptance_criteria": [
+        "Concurrent README fetching limited to 10 to avoid rate limits",
+        "Embedding generation batched to avoid OOM",
+        "Categorization batched in groups of 20"
+      ],
+      "priority": "must",
+      "search_hints": ["concurrency", "batch", "rate_limit", "asyncio.Semaphore"],
+      "notes": "[inferred — based on GitHub rate limits and embedding costs]"
+    },
+    {
+      "id": "R-102",
+      "category": "non-functional",
+      "summary": "Graceful error handling for external API failures (GitHub, OpenAI, Anthropic)",
+      "acceptance_criteria": [
+        "GitHub API failure doesn't crash the sync",
+        "OpenAI embedding failure skips the repo and continues",
+        "Anthropic categorization failure skips the batch and continues",
+        "Errors logged with context"
+      ],
+      "priority": "must",
+      "search_hints": ["error_handling", "try_except", "fallback", "retry"],
+      "notes": "[inferred — critical for pipeline reliability]"
+    },
+    {
+      "id": "R-103",
+      "category": "non-functional",
+      "summary": "Total API cost for processing ~300 repos stays under $0.10",
+      "acceptance_criteria": [
+        "OpenAI embedding cost < $0.02",
+        "Claude Haiku categorization cost < $0.05",
+        "README truncation limits token usage"
+      ],
+      "priority": "should",
+      "search_hints": ["cost", "truncate", "token_limit"],
+      "notes": "[inferred — user expectation from PRD cost estimates]"
+    },
+    {
+      "id": "R-104",
+      "category": "non-functional",
+      "summary": "Web UI is responsive and works on desktop and tablet",
+      "acceptance_criteria": [
+        "Layout adapts to screen sizes from 768px to 1920px+",
+        "Chat panel usable on tablet",
+        "Repo grid responsive (1-3 columns)"
+      ],
+      "priority": "could",
+      "search_hints": ["responsive", "breakpoint", "grid-cols", "md:", "lg:"],
+      "notes": "[inferred — standard web UI expectation]"
+    },
+    {
+      "id": "R-150",
+      "category": "constraint",
+      "summary": "Backend must use Python with FastAPI framework",
+      "acceptance_criteria": [
+        "API built with FastAPI",
+        "Python 3.11+",
+        "pyproject.toml for dependency management"
+      ],
+      "priority": "must",
+      "search_hints": ["FastAPI", "pyproject.toml", "uvicorn"]
+    },
+    {
+      "id": "R-151",
+      "category": "constraint",
+      "summary": "Database must be SQLite with sqlite-vec extension for vector search",
+      "acceptance_criteria": [
+        "No external database server required",
+        "sqlite-vec loaded for vector operations",
+        "Database file stored in api/data/starz.db"
+      ],
+      "priority": "must",
+      "search_hints": ["sqlite", "sqlite-vec", "vec0", "starz.db"]
+    },
+    {
+      "id": "R-152",
+      "category": "constraint",
+      "summary": "Frontend must use Next.js with shadcn/ui and Tailwind CSS",
+      "acceptance_criteria": [
+        "Next.js app in web/ directory",
+        "shadcn/ui components used for UI primitives",
+        "Tailwind CSS for styling"
+      ],
+      "priority": "must",
+      "search_hints": ["next.config", "shadcn", "tailwind", "web/"]
+    }
+  ]
+}

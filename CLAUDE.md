@@ -1,0 +1,64 @@
+# starz
+
+<!-- Fill in a brief description of your project -->
+
+## Crew Available
+
+This project uses the **pixl-crew** plugin. Claude has access to specialized agents and skills — prefer delegating to them over ad-hoc prompting.
+
+### Agents
+
+| Agent | When to use |
+|-------|-------------|
+| `orchestrator` | Multi-agent coordination, complex tasks spanning multiple domains |
+| `architect` | System design, DDD modeling, architecture decisions |
+| `product-owner` | Task planning, sprint organization, acceptance criteria |
+| `tech-lead` | Code review, quality gates, technical decisions |
+| `frontend-engineer` | React/Next.js, shadcn/ui, design extraction, UI work |
+| `backend-engineer` | TypeScript/Python backend, Fastify/Prisma or FastAPI/Pydantic |
+| `fullstack-engineer` | End-to-end features crossing API boundary |
+| `qa-engineer` | Testing, browser verification, review loops |
+| `devops-engineer` | Docker, CI/CD, deployment pipelines |
+| `security-engineer` | OWASP audits, RBAC, vulnerability analysis |
+| `explorer` | Fast codebase exploration and research (haiku) |
+| `onboarding-agent` | Client project onboarding, codebase scanning (haiku) |
+| `build-error-resolver` | Surgical build/type error fixes (sonnet) |
+| `doc-updater` | Keep docs in sync with code changes (haiku) |
+
+### Key Skills
+
+**Project scaffolding**: `/website`, `/saas-microservice`, `/fullstack-app`, `/admin-dashboard`, `/blog`, `/fastapi-api`
+**Frontend**: `/design-extraction`, `/shadcn-ui`, `/svg-icon-creation`, `/i18n-setup`, `/website-theme`, `/website-layout`
+**Backend**: `/ddd-pattern`, `/fastapi-service`, `/pydantic-api-endpoint`
+**Quality**: `/self-review-fix-loop`, `/code-reduction`, `/react-doctor`, `/seo-audit`, `/cto-review`, `/code-review`, `/test-runner`, `/test-writer`, `/benchmark`, `/schema-audit`, `/error-catalog`, `/api-audit`, `/dependency-review`, `/eval-harness`, `/security-scan`, `/spec-review`, `/cartographer`, `/agent-browser`, `/runbook`
+**Planning**: `/prd-analysis`, `/task-plan`, `/sprint-planning`, `/content-pipeline`, `/migration-plan`, `/prd-pipeline`
+**Workflow**: `/pr-creation`, `/claude-md`, `/skill-factory`, `/multi-agent-pipeline`, `/ralph-loop-crew`, `/context-packet-template`, `/crew-init`, `/studio-guide`, `/session-wrap`, `/client-project-setup`, `/strategic-compact`, `/continuous-learning`, `/batch`, `/changelog`, `/ship-milestone`, `/task-persist`
+**Project types**: `/website-project`
+**Marketing**: `/content-marketing`, `/intro-video-brief`
+**DevOps**: `/docker-cloudrun`, `/pm2`, `/makefile`, `/docker-prisma-setup`
+**Swift**: `/swift-patterns`
+**Intelligence**: `/intel`, `/strategic-intel`, `/vision-advisory`
+**Database/Payments**: `/supabase-postgres-best-practices`, `/stripe-best-practices`
+**Utilities**: `/file-parser`
+**Plugin dev**: `/agent-development`, `/command-development`, `/hook-development`, `/plugin-settings`, `/plugin-structure`
+
+### Studio Stacks (Scaffolding)
+
+Pre-built project templates — **never build from scratch** what a stack already provides.
+
+| Stack | Use case | Skill |
+|-------|----------|-------|
+| `nextjs` | Websites, landing pages (10 pages, i18n, blog, Stripe, Supabase, SEO) | `/website` |
+| `saas` | Backend microservices (17 foundation packages: identity, tenancy, RBAC, audit, outbox, DDD) | `/saas-microservice` |
+
+Run `/studio-guide` for full details on tokens, features, and the scaffold pipeline.
+
+## Operational Rules
+
+- **Explore → Plan → Implement → Commit** — use plan mode for multi-file changes
+- **Skills over ad-hoc prompts** — if a skill exists for the task, use it
+- **Frequent commits** — commit after each logical unit of work
+- **Delegate to specialists** — use the agent routing table above to pick the right agent
+- **Never build from scratch** — check studio stacks first; use `/saas-microservice` or `/website`
+
+> Full reference: pixl-crew plugin (`agents/`, `skills/`, `studio/`, `references/`)
