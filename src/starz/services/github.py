@@ -110,9 +110,13 @@ async def fetch_readmes(
 async def sync_from_github(
     on_progress: callable | None = None,
 ) -> dict[str, int]:
-    """Full sync: fetch stars, fetch READMEs, upsert to DB.
+    """Incremental sync: fetch stars, fetch READMEs for new repos only, upsert all.
 
-    Returns dict with counts: {"total": N, "new": N, "updated": N}
+    Only fetches READMEs for repos not already in the DB. Existing repos are
+    still upserted (to update metadata like star counts) but with readme_content=None,
+    so the COALESCE in the upsert query preserves the existing README.
+
+    Returns dict with counts: {"total", "new", "updated", "skipped_readmes"}
     """
     async with httpx.AsyncClient(timeout=30.0) as client:
         # 1. Fetch all starred repos
@@ -124,14 +128,30 @@ async def sync_from_github(
         if on_progress:
             on_progress("fetching", total, total)
 
-        # 2. Fetch READMEs for all repos (incremental optimization later)
-        if on_progress:
-            on_progress("readmes", 0, total)
-        readmes = await fetch_readmes(client, repos)
-        if on_progress:
-            on_progress("readmes", len(readmes), total)
+        # 2. Query DB for existing repos to determine which need READMEs
+        with get_db() as conn:
+            existing_names = {
+                row[0] for row in conn.execute("SELECT full_name FROM repos").fetchall()
+            }
 
-        # 3. Attach READMEs and upsert to DB
+        new_repos = [r for r in repos if r["full_name"] not in existing_names]
+        existing_repos = [r for r in repos if r["full_name"] in existing_names]
+
+        logger.info(
+            "Incremental sync: %d total, %d new, %d existing",
+            total,
+            len(new_repos),
+            len(existing_repos),
+        )
+
+        # 3. Fetch READMEs only for new repos
+        if on_progress:
+            on_progress("readmes", 0, len(new_repos))
+        readmes = await fetch_readmes(client, new_repos)
+        if on_progress:
+            on_progress("readmes", len(readmes), len(new_repos))
+
+        # 4. Attach READMEs and upsert ALL repos to DB
         if on_progress:
             on_progress("storing", 0, total)
 
@@ -139,18 +159,17 @@ async def sync_from_github(
         updated_count = 0
 
         with get_db() as conn:
-            existing = {
-                row[0] for row in conn.execute("SELECT full_name FROM repos").fetchall()
-            }
-
             for i, repo in enumerate(repos):
-                repo["readme_content"] = readmes.get(repo["full_name"])
-                upsert_repo(conn, repo)
-
-                if repo["full_name"] in existing:
+                if repo["full_name"] in existing_names:
+                    # Existing repo: pass None so COALESCE preserves existing README
+                    repo["readme_content"] = None
                     updated_count += 1
                 else:
+                    # New repo: attach fetched README (may be None if fetch failed)
+                    repo["readme_content"] = readmes.get(repo["full_name"])
                     new_count += 1
+
+                upsert_repo(conn, repo)
 
                 if on_progress and (i + 1) % 10 == 0:
                     on_progress("storing", i + 1, total)
@@ -158,4 +177,9 @@ async def sync_from_github(
         if on_progress:
             on_progress("storing", total, total)
 
-        return {"total": total, "new": new_count, "updated": updated_count}
+        return {
+            "total": total,
+            "new": new_count,
+            "updated": updated_count,
+            "skipped_readmes": len(existing_repos),
+        }

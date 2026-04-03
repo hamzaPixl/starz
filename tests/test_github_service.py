@@ -10,6 +10,7 @@ from starz.services.github import (
     fetch_readme,
     fetch_readmes,
     fetch_starred_repos,
+    sync_from_github,
 )
 
 
@@ -239,3 +240,178 @@ class TestFetchReadmes:
         client = AsyncMock(spec=httpx.AsyncClient)
         results = await fetch_readmes(client, [])
         assert results == {}
+
+
+class TestSyncFromGithub:
+    """Tests for sync_from_github incremental behavior."""
+
+    @patch("starz.services.github.upsert_repo")
+    @patch("starz.services.github.get_db")
+    @patch("starz.services.github.fetch_readmes")
+    @patch("starz.services.github.fetch_starred_repos")
+    async def test_only_fetches_readmes_for_new_repos(
+        self,
+        mock_fetch_starred,
+        mock_fetch_readmes,
+        mock_get_db,
+        mock_upsert,
+    ) -> None:
+        """READMEs are only fetched for repos not already in the DB."""
+        # Setup: a/existing is already in DB, b/new-repo is not
+        mock_fetch_starred.return_value = [
+            {
+                "full_name": "a/existing",
+                "name": "existing",
+                "owner": "a",
+                "description": "Old repo",
+                "language": "Python",
+                "topics": [],
+                "stargazers_count": 100,
+                "html_url": "https://github.com/a/existing",
+                "homepage": None,
+                "updated_at": "2024-01-01T00:00:00Z",
+                "starred_at": "2024-01-01T00:00:00Z",
+            },
+            {
+                "full_name": "b/new-repo",
+                "name": "new-repo",
+                "owner": "b",
+                "description": "New repo",
+                "language": "Rust",
+                "topics": [],
+                "stargazers_count": 50,
+                "html_url": "https://github.com/b/new-repo",
+                "homepage": None,
+                "updated_at": "2024-06-01T00:00:00Z",
+                "starred_at": "2024-06-01T00:00:00Z",
+            },
+        ]
+
+        # Mock DB: "a/existing" already present
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = [("a/existing",)]
+        mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_fetch_readmes.return_value = {"b/new-repo": "# New Repo README"}
+
+        result = await sync_from_github()
+
+        # Verify fetch_readmes was called only with the new repo
+        call_args = mock_fetch_readmes.call_args
+        repos_passed = call_args[0][1]  # second positional arg
+        full_names_passed = [r["full_name"] for r in repos_passed]
+        assert "b/new-repo" in full_names_passed
+        assert "a/existing" not in full_names_passed
+
+        # All repos should still be upserted (2 calls)
+        assert mock_upsert.call_count == 2
+
+        # Counts
+        assert result["total"] == 2
+        assert result["new"] == 1
+        assert result["updated"] == 1
+        assert result["skipped_readmes"] == 1
+
+    @patch("starz.services.github.upsert_repo")
+    @patch("starz.services.github.get_db")
+    @patch("starz.services.github.fetch_readmes")
+    @patch("starz.services.github.fetch_starred_repos")
+    async def test_all_new_repos_get_readmes(
+        self,
+        mock_fetch_starred,
+        mock_fetch_readmes,
+        mock_get_db,
+        mock_upsert,
+    ) -> None:
+        """When DB is empty, all repos should have READMEs fetched."""
+        mock_fetch_starred.return_value = [
+            {
+                "full_name": "a/one",
+                "name": "one",
+                "owner": "a",
+                "description": "Repo one",
+                "language": "Go",
+                "topics": [],
+                "stargazers_count": 10,
+                "html_url": "https://github.com/a/one",
+                "homepage": None,
+                "updated_at": "2024-01-01T00:00:00Z",
+                "starred_at": "2024-01-01T00:00:00Z",
+            },
+            {
+                "full_name": "b/two",
+                "name": "two",
+                "owner": "b",
+                "description": "Repo two",
+                "language": "Python",
+                "topics": [],
+                "stargazers_count": 20,
+                "html_url": "https://github.com/b/two",
+                "homepage": None,
+                "updated_at": "2024-01-01T00:00:00Z",
+                "starred_at": "2024-01-01T00:00:00Z",
+            },
+        ]
+
+        # Empty DB
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = []
+        mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_fetch_readmes.return_value = {"a/one": "# One", "b/two": "# Two"}
+
+        result = await sync_from_github()
+
+        # All repos should be passed to fetch_readmes
+        call_args = mock_fetch_readmes.call_args
+        repos_passed = call_args[0][1]
+        assert len(repos_passed) == 2
+
+        assert result["new"] == 2
+        assert result["updated"] == 0
+        assert result["skipped_readmes"] == 0
+
+    @patch("starz.services.github.upsert_repo")
+    @patch("starz.services.github.get_db")
+    @patch("starz.services.github.fetch_readmes")
+    @patch("starz.services.github.fetch_starred_repos")
+    async def test_existing_repos_get_none_readme(
+        self,
+        mock_fetch_starred,
+        mock_fetch_readmes,
+        mock_get_db,
+        mock_upsert,
+    ) -> None:
+        """Existing repos should be upserted with readme_content=None
+        so COALESCE in the DB preserves the old README."""
+        mock_fetch_starred.return_value = [
+            {
+                "full_name": "a/existing",
+                "name": "existing",
+                "owner": "a",
+                "description": "Old",
+                "language": "Python",
+                "topics": [],
+                "stargazers_count": 200,
+                "html_url": "https://github.com/a/existing",
+                "homepage": None,
+                "updated_at": "2024-01-01T00:00:00Z",
+                "starred_at": "2024-01-01T00:00:00Z",
+            },
+        ]
+
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = [("a/existing",)]
+        mock_get_db.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_fetch_readmes.return_value = {}
+
+        await sync_from_github()
+
+        # The existing repo should be upserted with readme_content=None
+        upsert_call = mock_upsert.call_args_list[0]
+        repo_arg = upsert_call[0][1]  # second positional arg to upsert_repo(conn, repo)
+        assert repo_arg["readme_content"] is None
