@@ -1,6 +1,62 @@
-# starz
+# Starz
 
-<!-- Fill in a brief description of your project -->
+AI-powered GitHub stars manager — search, categorize, and chat with your starred repos.
+
+## Tech Stack
+
+- **Backend**: Python 3.11+, FastAPI, SQLite + sqlite-vec
+- **Frontend**: Next.js 16, Tailwind CSS v4, shadcn/ui
+- **AI**: OpenAI (embeddings), Anthropic Claude (categorization + chat)
+- **CLI**: typer + rich
+
+## Project Structure
+
+- `src/starz/` — Python package (src layout)
+  - `cli.py` — typer CLI: sync, search, chat, serve
+  - `config.py` — env loading, paths (~/.starz/)
+  - `server.py` — FastAPI app factory
+  - `db/` — SQLite + sqlite-vec layer
+  - `services/` — github, embeddings, categorizer, search, chat
+  - `endpoints/` — API routes
+  - `schemas/` — Pydantic models
+  - `static/` — bundled Next.js frontend (gitignored in dev)
+- `web/` — Next.js source (dev only)
+- `pyproject.toml` — hatchling build, PyPI config
+
+## Commands
+
+```bash
+pip install -e .           # Install locally
+starz sync                 # Fetch + embed + categorize
+starz search "query"       # Semantic search
+starz chat                 # Interactive chat REPL
+starz serve                # Web UI on localhost:7827
+make build-web             # Build & bundle frontend
+make test                  # Run tests
+```
+
+## Key Patterns
+
+- **Config**: `starz.config.settings` singleton — loads from .env + gh auth fallback
+- **DB**: `get_db()` context manager — auto-inits schema + sqlite-vec on first use
+- **Services**: stateless functions — `sync_from_github()`, `embed_repos()`, `categorize_repos()`, `search()`, `chat()`
+- **Endpoints**: FastAPI routers — one file per domain (sync, repos, search, chat)
+- **Schemas**: Pydantic v2 — shared between CLI output and API responses
+
+## Environment Variables
+
+- `GITHUB_TOKEN` — GitHub personal access token (fallback: `gh auth token`)
+- `OPENAI_API_KEY` — for text-embedding-3-small
+- `ANTHROPIC_API_KEY` — for Claude Haiku (categorization) and Sonnet (chat)
+- `STARZ_DATA_DIR` — optional, defaults to ~/.starz/
+
+## Testing
+
+```bash
+pytest tests/ -v
+```
+
+Tests use mocked API clients — no real API calls in tests.
 
 ## Crew Available
 
