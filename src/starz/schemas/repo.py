@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+import json
+
+from pydantic import BaseModel, field_validator
 
 
 class RepoOut(BaseModel):
@@ -26,6 +28,20 @@ class RepoOut(BaseModel):
     archived: bool = False
     size_kb: int = 0
     health_score: int = 0
+
+    @field_validator("topics", "sub_tags", mode="before")
+    @classmethod
+    def parse_json_list(cls, v: any) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return []
+        if isinstance(v, list):
+            return v
+        return []
 
 
 class RepoDetail(RepoOut):
