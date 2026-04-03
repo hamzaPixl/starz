@@ -67,3 +67,21 @@ async def full_stats():
     from starz.services.graph import get_collection_stats
 
     return get_collection_stats()
+
+
+@router.get("/trends")
+async def trends():
+    """Get trending analysis of starring patterns."""
+    from starz.services.trends import compute_trends
+
+    return compute_trends()
+
+
+@router.get("/export/awesome")
+async def export_awesome():
+    """Generate an awesome-list markdown from starred repos."""
+    from fastapi.responses import PlainTextResponse
+
+    from starz.services.export import generate_awesome_list
+
+    return PlainTextResponse(generate_awesome_list(), media_type="text/markdown")
