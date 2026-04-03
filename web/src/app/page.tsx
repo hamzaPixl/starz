@@ -12,7 +12,6 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   X, Loader2, Star, GitFork, ExternalLink, Sparkles, ArrowUpRight,
-  Code2, FolderTree, Tag,
 } from "lucide-react";
 
 const BATCH = 50;
@@ -86,33 +85,42 @@ export default function Home() {
 
           {/* ── Overview ── */}
           <section>
-            <div className="flex items-end justify-between mb-8">
-              <div>
-                <h1 className="text-4xl font-bold tracking-tight">Your Stars</h1>
-                <p className="text-base text-muted-foreground mt-2">
-                  {stats?.total ?? "..."} repositories, {categories.length} categories, {languages.length} languages
-                </p>
-              </div>
-              <div className="hidden md:flex items-center gap-8">
-                <Stat icon={<Star className="h-5 w-5" />} value={stats?.total ?? 0} label="repos" />
-                <Stat icon={<FolderTree className="h-5 w-5" />} value={categories.length} label="categories" />
-                <Stat icon={<GitFork className="h-5 w-5" />} value={totalEdges} label="connections" />
-              </div>
-            </div>
+            <h1 className="text-4xl font-bold tracking-tight mb-8">Your Stars</h1>
 
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              {categories.map(([name, count]) => {
-                const active = cat === name;
-                const color = CATEGORY_COLORS[name] || "#6b7280";
-                return (
-                  <button key={name} onClick={() => setCat(active ? null : name)}
-                    className={`relative rounded-xl border px-4 py-4 text-left transition-all ${active ? "border-primary/60 bg-primary/10 glow-sm" : "border-border bg-card hover:bg-accent"}`}>
-                    <div className="absolute top-0 left-4 right-4 h-[2px] rounded-b" style={{ backgroundColor: color, opacity: active ? 1 : 0.5 }} />
-                    <p className="text-2xl font-bold tabular-nums mt-1" style={{ color: active ? color : undefined }}>{count}</p>
-                    <p className="text-xs text-muted-foreground mt-1 truncate">{name}</p>
-                  </button>
-                );
-              })}
+            {/* Top categories as horizontal bar segments — proportional */}
+            <div className="rounded-xl border border-border bg-card p-6 mb-6">
+              <div className="flex h-8 rounded-lg overflow-hidden mb-4">
+                {categories.map(([name, count]) => {
+                  const pct = (count / (stats?.total || 1)) * 100;
+                  if (pct < 1.5) return null;
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => setCat(cat === name ? null : name)}
+                      className={`relative transition-opacity ${cat && cat !== name ? "opacity-30" : "opacity-100 hover:opacity-80"}`}
+                      style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[name] || "#6b7280" }}
+                      title={`${name}: ${count}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {categories.map(([name, count]) => {
+                  const active = cat === name;
+                  const color = CATEGORY_COLORS[name] || "#6b7280";
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => setCat(active ? null : name)}
+                      className={`flex items-center gap-2 text-sm transition-colors ${active ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                      {name}
+                      <span className="font-mono text-muted-foreground">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </section>
 
@@ -341,12 +349,3 @@ export default function Home() {
   );
 }
 
-function Stat({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) {
-  return (
-    <div className="flex items-center gap-2 text-muted-foreground">
-      {icon}
-      <span className="text-lg font-bold tabular-nums text-foreground">{value.toLocaleString()}</span>
-      <span className="text-sm">{label}</span>
-    </div>
-  );
-}
