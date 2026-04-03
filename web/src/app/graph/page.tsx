@@ -241,7 +241,6 @@ export default function GraphPage() {
   });
 
   return (
-    <TooltipProvider delay={200}>
       <div className="h-screen flex flex-col overflow-hidden">
         <NavHeader>
           {stats && (
@@ -675,6 +674,5 @@ export default function GraphPage() {
           </aside>
         </div>
       </div>
-    </TooltipProvider>
   );
 }

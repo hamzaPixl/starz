@@ -99,7 +99,6 @@ export function RepoRow({ repo }: RepoRowProps) {
             <Archive
               className="h-3 w-3 text-muted-foreground/30 shrink-0"
               aria-label="Archived"
-              title="Archived"
             />
           )}
         </button>
