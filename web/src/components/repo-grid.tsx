@@ -30,7 +30,7 @@ function CardSkeleton() {
 }
 
 export function RepoGrid({ repos, loading }: RepoGridProps) {
-  if (loading) {
+  if (loading && repos.length === 0) {
     return (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {Array.from({ length: 12 }).map((_, i) => (
@@ -40,7 +40,7 @@ export function RepoGrid({ repos, loading }: RepoGridProps) {
     );
   }
 
-  if (repos.length === 0) {
+  if (!loading && repos.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <Sparkles className="h-10 w-10 text-muted-foreground/30 mb-4" />

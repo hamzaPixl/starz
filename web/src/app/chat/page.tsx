@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { api, type ChatMessage, type ChatResponse, type Stats } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { NavHeader } from "@/components/nav-header";
 import {
   Send,
   Sparkles,
@@ -14,7 +15,6 @@ import {
   Bot,
   Copy,
   Check,
-  ArrowLeft,
   Star,
 } from "lucide-react";
 
@@ -244,27 +244,13 @@ export default function ChatPage() {
   return (
     <div className="h-screen flex flex-col">
       {/* ── Header ── */}
-      <header className="shrink-0 flex items-center justify-between border-b border-border/50 px-6 h-12">
-        <div className="flex items-center gap-3">
-          <a
-            href="/"
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="text-xs">Back</span>
-          </a>
-          <div className="w-px h-4 bg-border/50" />
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <h1 className="text-sm font-semibold">Ask your stars</h1>
-          </div>
-          {stats && (
-            <span className="text-[11px] text-muted-foreground font-mono">
-              {stats.total} repos indexed
-            </span>
-          )}
-        </div>
-      </header>
+      <NavHeader>
+        {stats && (
+          <span className="text-[11px] text-muted-foreground font-mono">
+            {stats.total} repos indexed
+          </span>
+        )}
+      </NavHeader>
 
       {/* ── Messages ── */}
       <div className="flex-1 min-h-0 overflow-y-auto">
