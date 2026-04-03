@@ -18,6 +18,7 @@ class RepoOut(BaseModel):
     starred_at: str | None = None
     category: str | None = None
     summary: str | None = None
+    sub_tags: list[str] = []
     license: str | None = None
     forks_count: int = 0
     open_issues_count: int = 0

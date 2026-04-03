@@ -164,6 +164,70 @@ def chat() -> None:
 
 
 @app.command()
+def report(topic: str = typer.Argument(None, help="Category to focus on")) -> None:
+    """Generate a landscape report about your starred repos."""
+    if not settings.anthropic_api_key:
+        console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
+        raise typer.Exit(1)
+
+    from starz.services.reports import generate_landscape_report
+
+    with console.status(
+        f"[bold blue]Generating {'collection' if not topic else topic} report..."
+    ):
+        result = generate_landscape_report(topic)
+    console.print(result)
+
+
+@app.command(name="deep-dive")
+def deep_dive(topic: str = typer.Argument(..., help="Topic to analyze")) -> None:
+    """Deep-dive analysis of a specific topic in your stars."""
+    if not settings.anthropic_api_key:
+        console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
+        raise typer.Exit(1)
+
+    from starz.services.reports import generate_deep_dive
+
+    with console.status(f"[bold blue]Analyzing {topic}..."):
+        result = generate_deep_dive(topic)
+    console.print(result)
+
+
+@app.command()
+def digest(days: int = typer.Option(7, help="Number of days to cover")) -> None:
+    """Show a digest of recent starring activity."""
+    from starz.services.reports import generate_digest
+
+    d = generate_digest(days)
+    console.print(f"\n[bold]Digest -- last {days} days[/bold]")
+    console.print(f"  New stars: {d['new_stars_count']}")
+
+    if d["trending_categories"]:
+        console.print("  Trending:")
+        for cat, cnt in d["trending_categories"].items():
+            console.print(f"    {cat}: {cnt}")
+
+    if d["stale_repos"]:
+        console.print(f"\n  [yellow]Stale repos ({len(d['stale_repos'])}):[/yellow]")
+        for r in d["stale_repos"][:5]:
+            console.print(f"    {r['full_name']} (health: {r['health_score']})")
+
+
+@app.command()
+def export(
+    format: str = typer.Argument("awesome", help="Export format: awesome"),
+) -> None:
+    """Export your starred repos."""
+    if format == "awesome":
+        from starz.services.export import generate_awesome_list
+
+        console.print(generate_awesome_list())
+    else:
+        console.print(f"[red]Unknown format: {format}. Available: awesome[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def serve(
     port: int = typer.Option(7827, help="Port to serve on"),
     host: str = typer.Option("127.0.0.1", help="Host to bind to"),

@@ -63,6 +63,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE repos ADD COLUMN has_wiki INTEGER DEFAULT 0",
         "ALTER TABLE repos ADD COLUMN has_pages INTEGER DEFAULT 0",
         "ALTER TABLE repos ADD COLUMN health_score INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN sub_tags TEXT",
     ]
     for sql in migrations:
         try:

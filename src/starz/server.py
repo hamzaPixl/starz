@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from starz.endpoints import chat, graph, repos, search, sync
+from starz.endpoints import chat, graph, reports, repos, search, sync
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(search.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(graph.router, prefix="/api")
+    app.include_router(reports.router, prefix="/api")
 
     # Health check
     @app.get("/api/health")

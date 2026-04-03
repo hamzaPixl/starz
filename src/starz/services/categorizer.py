@@ -27,14 +27,20 @@ CATEGORIES = [
     "Other",
 ]
 
-SYSTEM_PROMPT = f"""You are a GitHub repository categorizer. Given a list of repositories, classify each into exactly one category and write a 2-3 sentence summary.
+SYSTEM_PROMPT = f"""You are a GitHub repository categorizer. Given a list of repositories, classify each into exactly one category, write a 2-3 sentence summary, and assign 2-3 specific sub-tags.
 
 Available categories: {", ".join(CATEGORIES)}
+
+Sub-tags should be more specific than GitHub topics. Examples:
+- ML/AI Library: ["nlp", "text-generation", "fine-tuning"]
+- Frontend Framework: ["react", "ssr", "routing"]
+- CLI Tool: ["terminal-ui", "file-management", "developer-workflow"]
 
 Respond with a JSON array. Each element must have:
 - "full_name": the repository full name (exactly as provided)
 - "category": one of the listed categories
 - "summary": 2-3 sentences describing what the repo does and why it's useful
+- "sub_tags": an array of 2-3 specific sub-tags for the repo
 
 Only output valid JSON, nothing else."""
 
@@ -132,10 +138,16 @@ def categorize_repos(on_progress: callable | None = None) -> int:
                         if category not in CATEGORIES:
                             category = "Other"
                         summary = result.get("summary", "")
+                        sub_tags = result.get("sub_tags", [])
 
                         conn.execute(
-                            "UPDATE repos SET category = ?, summary = ? WHERE full_name = ?",
-                            (category, summary, repo["full_name"]),
+                            "UPDATE repos SET category = ?, summary = ?, sub_tags = ? WHERE full_name = ?",
+                            (
+                                category,
+                                summary,
+                                json.dumps(sub_tags),
+                                repo["full_name"],
+                            ),
                         )
                         count += 1
 

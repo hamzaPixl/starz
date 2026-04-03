@@ -2,7 +2,7 @@
 
 import json
 import logging
-from collections import Counter, defaultdict
+from collections import Counter
 
 from starz.db.client import get_db
 
@@ -334,6 +334,15 @@ def get_collection_stats() -> dict:
             all_topics.extend(json.loads(r["topics"]))
         topic_counts = dict(Counter(all_topics).most_common(25))
 
+        # Top sub-tags
+        all_sub_tags: list[str] = []
+        sub_rows = conn.execute(
+            "SELECT sub_tags FROM repos WHERE sub_tags IS NOT NULL"
+        ).fetchall()
+        for r in sub_rows:
+            all_sub_tags.extend(json.loads(r["sub_tags"]))
+        sub_tag_counts = dict(Counter(all_sub_tags).most_common(30))
+
         # Starring timeline (monthly)
         timeline_rows = conn.execute("""
             SELECT SUBSTR(starred_at, 1, 7) as month, COUNT(*) as cnt
@@ -387,6 +396,7 @@ def get_collection_stats() -> dict:
         "top_owners": top_owners,
         "star_ranges": star_ranges,
         "top_topics": topic_counts,
+        "top_sub_tags": sub_tag_counts,
         "timeline": timeline,
         "edges": edges,
         "top_starred": top_starred,
