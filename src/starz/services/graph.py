@@ -2,17 +2,17 @@
 
 import json
 import logging
+from collections import Counter, defaultdict
 
 from starz.db.client import get_db
 
 logger = logging.getLogger(__name__)
 
 
-def compute_similarity_edges(k: int = 5, threshold: float = 0.5) -> int:
-    """Compute embedding similarity edges between repos."""
+def compute_similarity_edges(k: int = 5, threshold: float = 0.55) -> int:
+    """Compute embedding similarity edges. Only keep meaningful connections."""
     count = 0
     with get_db() as conn:
-        # Get all repos with embeddings
         repos = conn.execute("""
             SELECT r.id, e.embedding
             FROM repos r
@@ -22,14 +22,12 @@ def compute_similarity_edges(k: int = 5, threshold: float = 0.5) -> int:
         if not repos:
             return 0
 
-        # Clear old similarity edges
         conn.execute("DELETE FROM repo_edges WHERE edge_type = 'similar'")
 
         for repo in repos:
             repo_id = repo["id"]
             embedding_bytes = repo["embedding"]
 
-            # KNN query
             try:
                 neighbors = conn.execute(
                     """
@@ -39,7 +37,7 @@ def compute_similarity_edges(k: int = 5, threshold: float = 0.5) -> int:
                       AND k = ?
                 """,
                     (embedding_bytes, k + 1),
-                ).fetchall()  # +1 because it includes self
+                ).fetchall()
             except Exception as e:
                 logger.debug(f"KNN failed for repo {repo_id}: {e}")
                 continue
@@ -70,22 +68,30 @@ def compute_similarity_edges(k: int = 5, threshold: float = 0.5) -> int:
     return count
 
 
-def compute_owner_edges() -> int:
-    """Create edges between repos by the same owner."""
+def compute_owner_edges(max_repos_per_owner: int = 8) -> int:
+    """Create edges between repos by the same owner.
+    Skip owners with too many repos (they create unreadable star patterns).
+    """
     with get_db() as conn:
         conn.execute("DELETE FROM repo_edges WHERE edge_type = 'same_owner'")
 
-        result = conn.execute("""
+        result = conn.execute(
+            """
             INSERT OR IGNORE INTO repo_edges (source_id, target_id, edge_type, weight)
             SELECT a.id, b.id, 'same_owner', 0.8
             FROM repos a
             INNER JOIN repos b ON a.owner = b.owner AND a.id < b.id
-        """)
+            WHERE a.owner IN (
+                SELECT owner FROM repos GROUP BY owner HAVING COUNT(*) BETWEEN 2 AND ?
+            )
+        """,
+            (max_repos_per_owner,),
+        )
         return result.rowcount or 0
 
 
-def compute_topic_edges(threshold: float = 0.3) -> int:
-    """Create edges between repos sharing topics (Jaccard similarity)."""
+def compute_topic_edges(min_shared: int = 2) -> int:
+    """Create edges between repos sharing at least min_shared topics."""
     count = 0
     with get_db() as conn:
         conn.execute("DELETE FROM repo_edges WHERE edge_type = 'shared_topic'")
@@ -103,25 +109,71 @@ def compute_topic_edges(threshold: float = 0.3) -> int:
         ids = list(repo_topics.keys())
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
-                a_topics = repo_topics[ids[i]]
-                b_topics = repo_topics[ids[j]]
-                intersection = a_topics & b_topics
-                if not intersection:
+                intersection = repo_topics[ids[i]] & repo_topics[ids[j]]
+                if len(intersection) < min_shared:
                     continue
-                union = a_topics | b_topics
+                union = repo_topics[ids[i]] | repo_topics[ids[j]]
                 jaccard = len(intersection) / len(union)
-                if jaccard >= threshold:
-                    try:
-                        conn.execute(
-                            """
-                            INSERT OR IGNORE INTO repo_edges (source_id, target_id, edge_type, weight)
-                            VALUES (?, ?, 'shared_topic', ?)
-                        """,
-                            (ids[i], ids[j], round(jaccard, 3)),
-                        )
-                        count += 1
-                    except Exception:
-                        pass
+                try:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO repo_edges (source_id, target_id, edge_type, weight)
+                        VALUES (?, ?, 'shared_topic', ?)
+                    """,
+                        (ids[i], ids[j], round(jaccard, 3)),
+                    )
+                    count += 1
+                except Exception:
+                    pass
+
+    return count
+
+
+def compute_temporal_edges(window_hours: int = 24) -> int:
+    """Create edges between repos starred within the same time window."""
+    count = 0
+    with get_db() as conn:
+        conn.execute("DELETE FROM repo_edges WHERE edge_type = 'temporal'")
+
+        rows = conn.execute("""
+            SELECT id, starred_at FROM repos
+            WHERE starred_at IS NOT NULL
+            ORDER BY starred_at
+        """).fetchall()
+
+        if len(rows) < 2:
+            return 0
+
+        from datetime import datetime, timedelta
+
+        parsed = []
+        for r in rows:
+            try:
+                dt = datetime.fromisoformat(r["starred_at"].replace("Z", "+00:00"))
+                parsed.append((r["id"], dt))
+            except Exception:
+                continue
+
+        window = timedelta(hours=window_hours)
+        for i in range(len(parsed)):
+            for j in range(i + 1, len(parsed)):
+                diff = abs(parsed[j][1] - parsed[i][1])
+                if diff > window:
+                    break
+                weight = round(1.0 - (diff.total_seconds() / window.total_seconds()), 3)
+                if weight < 0.3:
+                    continue
+                try:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO repo_edges (source_id, target_id, edge_type, weight)
+                        VALUES (?, ?, 'temporal', ?)
+                    """,
+                        (parsed[i][0], parsed[j][0], weight),
+                    )
+                    count += 1
+                except Exception:
+                    pass
 
     return count
 
@@ -131,26 +183,30 @@ def compute_all_edges() -> dict[str, int]:
     similar = compute_similarity_edges()
     owner = compute_owner_edges()
     topic = compute_topic_edges()
+    temporal = compute_temporal_edges()
+    total = similar + owner + topic + temporal
     return {
         "similar": similar,
         "owner": owner,
         "topic": topic,
-        "total": similar + owner + topic,
+        "temporal": temporal,
+        "total": total,
     }
 
 
 def get_graph_data(edge_types: list[str] | None = None) -> dict:
     """Get full graph data for visualization."""
     with get_db() as conn:
-        # Nodes
         rows = conn.execute("""
             SELECT id, full_name, name, owner, description, language, category,
-                   stargazers_count, html_url, topics
+                   stargazers_count, html_url, topics, license, forks_count,
+                   starred_at, created_at_gh
             FROM repos
         """).fetchall()
 
         nodes = []
         for r in rows:
+            topics = json.loads(r["topics"]) if r["topics"] else []
             nodes.append(
                 {
                     "id": r["id"],
@@ -162,10 +218,14 @@ def get_graph_data(edge_types: list[str] | None = None) -> dict:
                     "stars": r["stargazers_count"],
                     "url": r["html_url"],
                     "description": r["description"],
+                    "topics": topics,
+                    "license": r["license"],
+                    "forks": r["forks_count"] or 0,
+                    "starred_at": r["starred_at"],
+                    "created_at": r["created_at_gh"],
                 }
             )
 
-        # Edges
         type_filter = ""
         params: list = []
         if edge_types:
@@ -219,3 +279,116 @@ def get_similar_repos(repo_id: int, limit: int = 5) -> list[dict]:
             repo["topics"] = json.loads(repo["topics"]) if repo.get("topics") else []
             results.append(repo)
         return results
+
+
+def get_collection_stats() -> dict:
+    """Rich analytics about the starred collection."""
+    with get_db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM repos").fetchone()[0]
+
+        # Category breakdown
+        cats = conn.execute(
+            "SELECT category, COUNT(*) as cnt FROM repos WHERE category IS NOT NULL GROUP BY category ORDER BY cnt DESC"
+        ).fetchall()
+        by_category = {r["category"]: r["cnt"] for r in cats}
+
+        # Language breakdown
+        langs = conn.execute(
+            "SELECT language, COUNT(*) as cnt FROM repos WHERE language IS NOT NULL GROUP BY language ORDER BY cnt DESC"
+        ).fetchall()
+        by_language = {r["language"]: r["cnt"] for r in langs}
+
+        # Top owners
+        owners = conn.execute(
+            "SELECT owner, COUNT(*) as cnt FROM repos GROUP BY owner ORDER BY cnt DESC LIMIT 15"
+        ).fetchall()
+        top_owners = {r["owner"]: r["cnt"] for r in owners}
+
+        # License breakdown
+        licenses = conn.execute(
+            "SELECT license, COUNT(*) as cnt FROM repos WHERE license IS NOT NULL GROUP BY license ORDER BY cnt DESC"
+        ).fetchall()
+        by_license = {r["license"]: r["cnt"] for r in licenses}
+
+        # Star ranges
+        star_ranges = {}
+        for label, lo, hi in [
+            ("0-100", 0, 100),
+            ("100-1K", 100, 1000),
+            ("1K-10K", 1000, 10000),
+            ("10K-100K", 10000, 100000),
+            ("100K+", 100000, 999999999),
+        ]:
+            cnt = conn.execute(
+                "SELECT COUNT(*) FROM repos WHERE stargazers_count >= ? AND stargazers_count < ?",
+                (lo, hi),
+            ).fetchone()[0]
+            star_ranges[label] = cnt
+
+        # Top topics
+        all_topics: list[str] = []
+        rows = conn.execute(
+            "SELECT topics FROM repos WHERE topics IS NOT NULL AND topics != '[]'"
+        ).fetchall()
+        for r in rows:
+            all_topics.extend(json.loads(r["topics"]))
+        topic_counts = dict(Counter(all_topics).most_common(25))
+
+        # Starring timeline (monthly)
+        timeline_rows = conn.execute("""
+            SELECT SUBSTR(starred_at, 1, 7) as month, COUNT(*) as cnt
+            FROM repos WHERE starred_at IS NOT NULL
+            GROUP BY month ORDER BY month
+        """).fetchall()
+        timeline = {r["month"]: r["cnt"] for r in timeline_rows}
+
+        # Edge stats
+        edge_rows = conn.execute(
+            "SELECT edge_type, COUNT(*) as cnt, AVG(weight) as avg_w FROM repo_edges GROUP BY edge_type"
+        ).fetchall()
+        edges = {
+            r["edge_type"]: {"count": r["cnt"], "avg_weight": round(r["avg_w"], 3)}
+            for r in edge_rows
+        }
+
+        # Top starred repos
+        top_repos = conn.execute(
+            "SELECT full_name, stargazers_count, category, language FROM repos ORDER BY stargazers_count DESC LIMIT 10"
+        ).fetchall()
+        top_starred = [
+            {
+                "full_name": r["full_name"],
+                "stars": r["stargazers_count"],
+                "category": r["category"],
+                "language": r["language"],
+            }
+            for r in top_repos
+        ]
+
+        # Recently starred
+        recent = conn.execute(
+            "SELECT full_name, starred_at, category, language FROM repos WHERE starred_at IS NOT NULL ORDER BY starred_at DESC LIMIT 10"
+        ).fetchall()
+        recently_starred = [
+            {
+                "full_name": r["full_name"],
+                "starred_at": r["starred_at"],
+                "category": r["category"],
+                "language": r["language"],
+            }
+            for r in recent
+        ]
+
+    return {
+        "total": total,
+        "by_category": by_category,
+        "by_language": by_language,
+        "by_license": by_license,
+        "top_owners": top_owners,
+        "star_ranges": star_ranges,
+        "top_topics": topic_counts,
+        "timeline": timeline,
+        "edges": edges,
+        "top_starred": top_starred,
+        "recently_starred": recently_starred,
+    }

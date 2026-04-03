@@ -70,6 +70,13 @@ async def fetch_starred_repos(client: httpx.AsyncClient) -> list[dict[str, Any]]
                     "created_at_gh": repo.get("created_at"),
                     "archived": 1 if repo.get("archived") else 0,
                     "size_kb": repo.get("size", 0),
+                    "pushed_at": repo.get("pushed_at"),
+                    "watchers_count": repo.get("watchers_count", 0),
+                    "is_fork": 1 if repo.get("fork") else 0,
+                    "owner_type": repo.get("owner", {}).get("type", "User"),
+                    "default_branch": repo.get("default_branch"),
+                    "has_wiki": 1 if repo.get("has_wiki") else 0,
+                    "has_pages": 1 if repo.get("has_pages") else 0,
                 }
             )
         page += 1

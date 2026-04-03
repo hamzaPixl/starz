@@ -59,3 +59,11 @@ async def stats():
     """Get aggregate stats by category and language."""
     with get_db() as conn:
         return StatsResponse(**get_stats(conn))
+
+
+@router.get("/stats/full")
+async def full_stats():
+    """Get rich analytics about the entire collection."""
+    from starz.services.graph import get_collection_stats
+
+    return get_collection_stats()

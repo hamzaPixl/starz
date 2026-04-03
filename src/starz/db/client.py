@@ -55,6 +55,13 @@ def _init_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE repos ADD COLUMN created_at_gh TEXT",
         "ALTER TABLE repos ADD COLUMN archived INTEGER DEFAULT 0",
         "ALTER TABLE repos ADD COLUMN size_kb INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN pushed_at TEXT",
+        "ALTER TABLE repos ADD COLUMN watchers_count INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN is_fork INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN owner_type TEXT",
+        "ALTER TABLE repos ADD COLUMN default_branch TEXT",
+        "ALTER TABLE repos ADD COLUMN has_wiki INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN has_pages INTEGER DEFAULT 0",
     ]
     for sql in migrations:
         try:
@@ -96,8 +103,10 @@ def upsert_repo(conn: sqlite3.Connection, repo: dict) -> int:
                           stargazers_count, html_url, homepage, updated_at, starred_at,
                           readme_content, synced_at,
                           license, forks_count, open_issues_count,
-                          created_at_gh, archived, size_kb)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          created_at_gh, archived, size_kb,
+                          pushed_at, watchers_count, is_fork, owner_type,
+                          default_branch, has_wiki, has_pages)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(full_name) DO UPDATE SET
             description = excluded.description,
             language = excluded.language,
@@ -113,7 +122,14 @@ def upsert_repo(conn: sqlite3.Connection, repo: dict) -> int:
             open_issues_count = excluded.open_issues_count,
             created_at_gh = excluded.created_at_gh,
             archived = excluded.archived,
-            size_kb = excluded.size_kb
+            size_kb = excluded.size_kb,
+            pushed_at = excluded.pushed_at,
+            watchers_count = excluded.watchers_count,
+            is_fork = excluded.is_fork,
+            owner_type = excluded.owner_type,
+            default_branch = excluded.default_branch,
+            has_wiki = excluded.has_wiki,
+            has_pages = excluded.has_pages
     """,
         (
             repo["full_name"],
@@ -135,6 +151,13 @@ def upsert_repo(conn: sqlite3.Connection, repo: dict) -> int:
             repo.get("created_at_gh"),
             repo.get("archived", 0),
             repo.get("size_kb", 0),
+            repo.get("pushed_at"),
+            repo.get("watchers_count", 0),
+            repo.get("is_fork", 0),
+            repo.get("owner_type", "User"),
+            repo.get("default_branch"),
+            repo.get("has_wiki", 0),
+            repo.get("has_pages", 0),
         ),
     )
 

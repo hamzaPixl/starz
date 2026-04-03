@@ -21,14 +21,16 @@ def _get_client() -> OpenAI:
 
 
 def build_embedding_text(repo: dict) -> str:
-    """Build the text to embed for a repo.
+    """Build structured text for embedding.
 
-    Combines full_name, description, language, topics, and a truncated
-    readme into a single pipe-separated string suitable for embedding.
+    Structured format gives the embedding model clear signal about each dimension
+    of the repo, rather than mixing everything into a blob.
     """
     parts = [repo.get("full_name", "")]
     if repo.get("description"):
         parts.append(repo["description"])
+    if repo.get("category"):
+        parts.append(f"Category: {repo['category']}")
     if repo.get("language"):
         parts.append(f"Language: {repo['language']}")
     topics = repo.get("topics")
@@ -37,8 +39,15 @@ def build_embedding_text(repo: dict) -> str:
             topics = json.loads(topics)
         if topics:
             parts.append(f"Topics: {', '.join(topics)}")
+    if repo.get("license"):
+        parts.append(f"License: {repo['license']}")
+    if repo.get("owner_type") == "Organization":
+        parts.append(f"Organization: {repo.get('owner', '')}")
+    if repo.get("summary"):
+        parts.append(repo["summary"])
     if repo.get("readme_content"):
-        parts.append(repo["readme_content"][:3000])
+        # Take first 2500 chars of README — leave room for structured fields
+        parts.append(repo["readme_content"][:2500])
     return " | ".join(parts)
 
 
