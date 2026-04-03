@@ -16,3 +16,19 @@ async def graph(
     """Get full graph data for visualization."""
     types = edge_types.split(",") if edge_types else None
     return get_graph_data(types)
+
+
+@router.get("/ecosystems")
+async def ecosystems():
+    """Detect technology ecosystems in starred repos."""
+    from starz.services.ecosystems import detect_ecosystems
+
+    return detect_ecosystems()
+
+
+@router.get("/gaps")
+async def gaps():
+    """Identify gaps in technology stacks."""
+    from starz.services.ecosystems import detect_gaps
+
+    return detect_gaps()

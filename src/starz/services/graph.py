@@ -178,18 +178,81 @@ def compute_temporal_edges(window_hours: int = 24) -> int:
     return count
 
 
+def compute_dependency_edges() -> int:
+    """Parse README content for dependency mentions and cross-reference against starred repos."""
+    import re
+
+    count = 0
+    with get_db() as conn:
+        conn.execute("DELETE FROM repo_edges WHERE edge_type = 'depends_on'")
+
+        repos = conn.execute(
+            "SELECT id, full_name, name, readme_content FROM repos"
+        ).fetchall()
+
+        # Build name lookup: lowercase name -> repo id
+        name_to_id: dict[str, int] = {}
+        for r in repos:
+            name_to_id[r["name"].lower()] = r["id"]
+            name_to_id[r["full_name"].lower()] = r["id"]
+
+        # Patterns that indicate dependency usage
+        patterns = [
+            r"npm\s+install\s+([a-z0-9@/_-]+)",
+            r"yarn\s+add\s+([a-z0-9@/_-]+)",
+            r"bun\s+add\s+([a-z0-9@/_-]+)",
+            r"pip\s+install\s+([a-z0-9_-]+)",
+            r"from\s+([a-z_]+)\s+import",
+            r"import\s+([a-z_]+)",
+            r'require\(["\']([a-z0-9@/_-]+)["\']\)',
+        ]
+
+        for repo in repos:
+            readme = repo["readme_content"]
+            if not readme:
+                continue
+
+            repo_id = repo["id"]
+            mentioned: set[int] = set()
+
+            for pattern in patterns:
+                matches = re.findall(pattern, readme.lower())
+                for match in matches:
+                    # Clean up package name
+                    pkg = match.strip().split("/")[-1]  # Get base name
+                    if pkg in name_to_id and name_to_id[pkg] != repo_id:
+                        mentioned.add(name_to_id[pkg])
+
+            for target_id in mentioned:
+                try:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO repo_edges (source_id, target_id, edge_type, weight)
+                        VALUES (?, ?, 'depends_on', 0.6)
+                    """,
+                        (repo_id, target_id),
+                    )
+                    count += 1
+                except Exception:
+                    pass
+
+    return count
+
+
 def compute_all_edges() -> dict[str, int]:
     """Run all edge computations. Returns counts by type."""
     similar = compute_similarity_edges()
     owner = compute_owner_edges()
     topic = compute_topic_edges()
     temporal = compute_temporal_edges()
-    total = similar + owner + topic + temporal
+    deps = compute_dependency_edges()
+    total = similar + owner + topic + temporal + deps
     return {
         "similar": similar,
         "owner": owner,
         "topic": topic,
         "temporal": temporal,
+        "depends_on": deps,
         "total": total,
     }
 

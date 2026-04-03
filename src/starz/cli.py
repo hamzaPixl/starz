@@ -59,6 +59,13 @@ def sync() -> None:
         f"({edges['similar']} similar, {edges['owner']} owner, {edges['topic']} topic)[/green]"
     )
 
+    # 4b. Compute ecosystem edges
+    with console.status("[bold blue]Computing ecosystem edges..."):
+        from starz.services.ecosystems import compute_ecosystem_edges
+
+        eco_edges = compute_ecosystem_edges()
+    console.print(f"[green]  + {eco_edges} ecosystem edges[/green]")
+
     # 5. Compute health scores
     with console.status("[bold blue]Computing health scores..."):
         from starz.services.github import compute_health_scores
@@ -225,6 +232,118 @@ def export(
     else:
         console.print(f"[red]Unknown format: {format}. Available: awesome[/red]")
         raise typer.Exit(1)
+
+
+@app.command()
+def freshness() -> None:
+    """Show repos grouped by health/freshness tier."""
+    from rich.table import Table
+
+    from starz.db.client import get_db
+
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT full_name, language, category, health_score, pushed_at "
+            "FROM repos ORDER BY health_score ASC"
+        ).fetchall()
+
+    tiers: dict[str, list] = {
+        "abandoned": [],
+        "slowing": [],
+        "active": [],
+        "thriving": [],
+    }
+    for r in rows:
+        score = r["health_score"]
+        if score < 25:
+            tiers["abandoned"].append(r)
+        elif score < 50:
+            tiers["slowing"].append(r)
+        elif score < 75:
+            tiers["active"].append(r)
+        else:
+            tiers["thriving"].append(r)
+
+    for tier_name, repos in tiers.items():
+        if not repos:
+            continue
+        color = {
+            "abandoned": "red",
+            "slowing": "yellow",
+            "active": "blue",
+            "thriving": "green",
+        }[tier_name]
+        console.print(f"\n[{color}]{tier_name.upper()}[/{color}] ({len(repos)} repos)")
+        table = Table(show_header=True)
+        table.add_column("Repo", style="cyan", no_wrap=True)
+        table.add_column("Health", justify="right")
+        table.add_column("Language")
+        table.add_column("Category")
+        for r in repos[:10]:
+            table.add_row(
+                r["full_name"],
+                str(r["health_score"]),
+                r["language"] or "\u2014",
+                r["category"] or "\u2014",
+            )
+        console.print(table)
+
+
+@app.command()
+def trends() -> None:
+    """Show trending analysis of your starring patterns."""
+    from starz.services.trends import compute_trends
+
+    t = compute_trends()
+
+    console.print("\n[bold]Starring Timeline[/bold]")
+    for entry in t["timeline"][-6:]:
+        bar = "\u2588" * min(entry["count"], 50)
+        console.print(f"  {entry['month']}: {bar} ({entry['count']})")
+
+    if t["accelerating"]:
+        console.print("\n[green]Accelerating[/green]")
+        for a in t["accelerating"]:
+            console.print(
+                f"  {a['category']}: {a['previous']} -> {a['recent']} ({a['velocity']})"
+            )
+
+    if t["declining"]:
+        console.print("\n[yellow]Declining[/yellow]")
+        for d in t["declining"]:
+            console.print(f"  {d['category']}: {d['previous']} -> {d['recent']}")
+
+    if t["hot_topics"]:
+        console.print("\n[bold]Hot Topics[/bold]")
+        for h in t["hot_topics"][:10]:
+            console.print(f"  {h['topic']}: {h['count']}")
+
+
+@app.command()
+def ecosystems() -> None:
+    """Detect technology ecosystems in your starred repos."""
+    from starz.services.ecosystems import detect_ecosystems, detect_gaps
+
+    ecos = detect_ecosystems()
+    if not ecos:
+        console.print("[yellow]No ecosystems detected[/yellow]")
+        return
+
+    for name, data in sorted(ecos.items(), key=lambda x: -x[1]["coverage"]):
+        bar = "\u2588" * int(data["coverage"] / 5)
+        console.print(f"\n[bold]{name}[/bold] ({data['coverage']}%) {bar}")
+        console.print(f"  Repos: {data['repo_count']}")
+        console.print(f"  Components: {', '.join(data['matched_components'])}")
+        if data["missing_components"]:
+            console.print(
+                f"  [yellow]Missing: {', '.join(data['missing_components'][:5])}[/yellow]"
+            )
+
+    gaps = detect_gaps()
+    if gaps:
+        console.print("\n[bold]Top Gaps[/bold]")
+        for g in gaps[:5]:
+            console.print(f"  [{g['ecosystem']}] Missing: {g['missing']}")
 
 
 @app.command()
