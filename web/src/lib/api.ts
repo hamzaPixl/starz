@@ -24,6 +24,33 @@ export interface Repo {
   homepage: string | null;
   category: string | null;
   summary: string | null;
+  license: string | null;
+  forks_count: number;
+  archived: boolean;
+}
+
+export interface GraphNode {
+  id: number;
+  label: string;
+  full_name: string;
+  owner: string;
+  category: string | null;
+  language: string | null;
+  stars: number;
+  url: string;
+  description: string | null;
+}
+
+export interface GraphLink {
+  source: number;
+  target: number;
+  type: string;
+  weight: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  links: GraphLink[];
 }
 
 export interface RepoList {
@@ -110,4 +137,12 @@ export const api = {
     fetchApi<{ message: string }>("/sync", { method: "POST" }),
 
   getSyncStatus: () => fetchApi<SyncStatus>("/sync/status"),
+
+  getGraph: (edgeTypes?: string[]) => {
+    const params = edgeTypes ? `?edge_types=${edgeTypes.join(",")}` : "";
+    return fetchApi<GraphData>(`/graph${params}`);
+  },
+
+  getSimilar: (repoId: number, limit = 5) =>
+    fetchApi<{ repo_id: number; similar: Repo[] }>(`/repos/${repoId}/similar?limit=${limit}`),
 };
