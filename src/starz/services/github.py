@@ -60,6 +60,16 @@ async def fetch_starred_repos(client: httpx.AsyncClient) -> list[dict[str, Any]]
                     "homepage": repo.get("homepage"),
                     "updated_at": repo.get("updated_at"),
                     "starred_at": item.get("starred_at"),
+                    "license": (
+                        repo.get("license", {}).get("spdx_id")
+                        if repo.get("license")
+                        else None
+                    ),
+                    "forks_count": repo.get("forks_count", 0),
+                    "open_issues_count": repo.get("open_issues_count", 0),
+                    "created_at_gh": repo.get("created_at"),
+                    "archived": 1 if repo.get("archived") else 0,
+                    "size_kb": repo.get("size", 0),
                 }
             )
         page += 1

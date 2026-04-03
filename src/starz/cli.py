@@ -49,6 +49,16 @@ def sync() -> None:
             categorized = categorize_repos()
         console.print(f"[green]Categorized {categorized} repos[/green]")
 
+    # 4. Compute edges
+    with console.status("[bold blue]Computing connections..."):
+        from starz.services.graph import compute_all_edges
+
+        edges = compute_all_edges()
+    console.print(
+        f"[green]Computed {edges['total']} connections "
+        f"({edges['similar']} similar, {edges['owner']} owner, {edges['topic']} topic)[/green]"
+    )
+
     # Summary
     with get_db() as conn:
         stats = get_stats(conn)

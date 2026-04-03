@@ -45,6 +45,15 @@ async def get_repo(repo_id: int):
     return RepoDetail(**{k: v for k, v in repo.items() if k in RepoDetail.model_fields})
 
 
+@router.get("/repos/{repo_id}/similar")
+async def similar_repos(repo_id: int, limit: int = Query(5, ge=1, le=20)):
+    """Get similar repos based on precomputed graph edges."""
+    from starz.services.graph import get_similar_repos
+
+    results = get_similar_repos(repo_id, limit)
+    return {"repo_id": repo_id, "similar": results}
+
+
 @router.get("/stats", response_model=StatsResponse)
 async def stats():
     """Get aggregate stats by category and language."""

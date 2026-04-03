@@ -1,3 +1,3 @@
-from starz.endpoints import chat, repos, search, sync
+from starz.endpoints import chat, graph, repos, search, sync
 
-__all__ = ["chat", "repos", "search", "sync"]
+__all__ = ["chat", "graph", "repos", "search", "sync"]

@@ -32,6 +32,36 @@ def _init_db(conn: sqlite3.Connection) -> None:
     """
     )
 
+    # Repo edges table for graph relationships
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS repo_edges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL,
+            edge_type TEXT NOT NULL,
+            weight REAL DEFAULT 1.0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(source_id, target_id, edge_type)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_source ON repo_edges(source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_target ON repo_edges(target_id)")
+
+    # Migrations (idempotent)
+    migrations = [
+        "ALTER TABLE repos ADD COLUMN license TEXT",
+        "ALTER TABLE repos ADD COLUMN forks_count INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN open_issues_count INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN created_at_gh TEXT",
+        "ALTER TABLE repos ADD COLUMN archived INTEGER DEFAULT 0",
+        "ALTER TABLE repos ADD COLUMN size_kb INTEGER DEFAULT 0",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass  # Column already exists
+
 
 def get_connection() -> sqlite3.Connection:
     """Get a new database connection with sqlite-vec loaded."""
@@ -64,8 +94,10 @@ def upsert_repo(conn: sqlite3.Connection, repo: dict) -> int:
         """
         INSERT INTO repos (full_name, name, owner, description, language, topics,
                           stargazers_count, html_url, homepage, updated_at, starred_at,
-                          readme_content, synced_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          readme_content, synced_at,
+                          license, forks_count, open_issues_count,
+                          created_at_gh, archived, size_kb)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(full_name) DO UPDATE SET
             description = excluded.description,
             language = excluded.language,
@@ -75,7 +107,13 @@ def upsert_repo(conn: sqlite3.Connection, repo: dict) -> int:
             homepage = excluded.homepage,
             updated_at = excluded.updated_at,
             readme_content = COALESCE(excluded.readme_content, repos.readme_content),
-            synced_at = excluded.synced_at
+            synced_at = excluded.synced_at,
+            license = excluded.license,
+            forks_count = excluded.forks_count,
+            open_issues_count = excluded.open_issues_count,
+            created_at_gh = excluded.created_at_gh,
+            archived = excluded.archived,
+            size_kb = excluded.size_kb
     """,
         (
             repo["full_name"],
@@ -91,6 +129,12 @@ def upsert_repo(conn: sqlite3.Connection, repo: dict) -> int:
             repo.get("starred_at"),
             repo.get("readme_content"),
             now,
+            repo.get("license"),
+            repo.get("forks_count", 0),
+            repo.get("open_issues_count", 0),
+            repo.get("created_at_gh"),
+            repo.get("archived", 0),
+            repo.get("size_kb", 0),
         ),
     )
 

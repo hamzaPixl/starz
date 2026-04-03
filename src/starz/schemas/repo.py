@@ -18,6 +18,12 @@ class RepoOut(BaseModel):
     starred_at: str | None = None
     category: str | None = None
     summary: str | None = None
+    license: str | None = None
+    forks_count: int = 0
+    open_issues_count: int = 0
+    created_at_gh: str | None = None
+    archived: bool = False
+    size_kb: int = 0
 
 
 class RepoDetail(RepoOut):
