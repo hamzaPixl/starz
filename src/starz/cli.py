@@ -95,8 +95,47 @@ def search(query: str = typer.Argument(..., help="Search query")) -> None:
 
 @app.command()
 def chat() -> None:
-    """Start an interactive chat session about your starred repos."""
-    console.print("Starting chat...")
+    """Chat with your starred repos using AI."""
+    from starz.services.chat import chat as do_chat
+
+    if not settings.anthropic_api_key:
+        console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
+        raise typer.Exit(1)
+
+    console.print("[bold]Starz Chat[/bold] — Ask questions about your GitHub stars")
+    console.print("[dim]Type 'quit' or 'exit' to stop[/dim]\n")
+
+    history: list[dict[str, str]] = []
+
+    while True:
+        try:
+            query = console.input("[bold cyan]You:[/bold cyan] ").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Goodbye![/dim]")
+            break
+
+        if not query or query.lower() in ("quit", "exit", "q"):
+            console.print("[dim]Goodbye![/dim]")
+            break
+
+        with console.status("[bold blue]Thinking..."):
+            try:
+                result = do_chat(query, history=history)
+            except Exception as e:
+                console.print(f"[red]Error: {e}[/red]")
+                continue
+
+        console.print(f"\n[bold green]Starz:[/bold green] {result['answer']}\n")
+
+        if result["sources"]:
+            console.print("[dim]Sources:[/dim]")
+            for s in result["sources"]:
+                console.print(f"  [dim]• {s['full_name']}[/dim]")
+            console.print()
+
+        # Append to history
+        history.append({"role": "user", "content": query})
+        history.append({"role": "assistant", "content": result["answer"]})
 
 
 @app.command()
