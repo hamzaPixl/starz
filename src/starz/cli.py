@@ -60,9 +60,37 @@ def sync() -> None:
 
 
 @app.command()
-def search(query: str) -> None:
-    """Search starred repositories using semantic search."""
-    console.print(f"Searching for: {query}")
+def search(query: str = typer.Argument(..., help="Search query")) -> None:
+    """Search your starred repos semantically."""
+    from starz.services.search import search as do_search
+
+    from rich.table import Table
+
+    with console.status("[bold blue]Searching..."):
+        results = do_search(query)
+
+    if not results:
+        console.print("[yellow]No results found.[/yellow]")
+        raise typer.Exit()
+
+    table = Table(title=f"Results for '{query}'")
+    table.add_column("Repo", style="bold cyan", no_wrap=True)
+    table.add_column("Category", style="magenta")
+    table.add_column("Language", style="green")
+    table.add_column("Description", max_width=50)
+    table.add_column("Score", justify="right")
+
+    for r in results:
+        table.add_row(
+            r["full_name"],
+            r.get("category") or "\u2014",
+            r.get("language") or "\u2014",
+            (r.get("description") or "\u2014")[:50],
+            f"{r.get('score', 0):.2f}",
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]{len(results)} results[/dim]")
 
 
 @app.command()
