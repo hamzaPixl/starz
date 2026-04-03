@@ -139,9 +139,15 @@ def chat() -> None:
 
 
 @app.command()
-def serve() -> None:
-    """Start the web server with UI and API."""
-    console.print("Starting server on http://localhost:7827")
+def serve(
+    port: int = typer.Option(7827, help="Port to serve on"),
+    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
+) -> None:
+    """Launch the Starz web UI and API server."""
+    import uvicorn
+
+    console.print(f"[bold]Starting Starz server on http://{host}:{port}[/bold]")
+    uvicorn.run("starz.server:app", host=host, port=port, reload=False)
 
 
 if __name__ == "__main__":
