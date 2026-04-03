@@ -46,6 +46,10 @@ web/node_modules/
 web/.next/
 web/out/
 
+# Pipeline/planning artifacts
+.context/
+pipeline-state.json
+
 # OS
 .DS_Store
 Thumbs.db

@@ -41,9 +41,9 @@ dependencies = [
 starz = "starz.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/hamzamounir/starz"
-Repository = "https://github.com/hamzamounir/starz"
-Issues = "https://github.com/hamzamounir/starz/issues"
+Homepage = "https://github.com/hamzaPixl/starz"
+Repository = "https://github.com/hamzaPixl/starz"
+Issues = "https://github.com/hamzaPixl/starz/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/starz"]
