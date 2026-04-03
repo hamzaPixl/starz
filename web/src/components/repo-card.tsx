@@ -1,94 +1,96 @@
 "use client";
 
 import type { Repo } from "@/lib/api";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardAction,
-  CardDescription,
-} from "@/components/ui/card";
-import { Star } from "lucide-react";
+import { Star, ExternalLink } from "lucide-react";
 
 interface RepoCardProps {
   repo: Repo;
 }
 
-const LANGUAGE_COLORS: Record<string, string> = {
-  TypeScript: "bg-blue-500",
-  JavaScript: "bg-yellow-400",
-  Python: "bg-green-500",
-  Rust: "bg-orange-600",
-  Go: "bg-cyan-500",
-  Java: "bg-red-500",
-  Ruby: "bg-red-600",
-  Swift: "bg-orange-500",
-  Kotlin: "bg-purple-500",
-  C: "bg-gray-500",
-  "C++": "bg-pink-500",
-  "C#": "bg-green-600",
-  PHP: "bg-indigo-400",
-  Shell: "bg-emerald-500",
-  Lua: "bg-blue-700",
-  Dart: "bg-teal-500",
-  Scala: "bg-red-400",
-  Elixir: "bg-purple-600",
-  Haskell: "bg-purple-400",
-  Zig: "bg-amber-500",
+const LANG_COLORS: Record<string, string> = {
+  TypeScript: "#3178c6",
+  JavaScript: "#f1e05a",
+  Python: "#3572A5",
+  Rust: "#dea584",
+  Go: "#00ADD8",
+  Java: "#b07219",
+  Ruby: "#701516",
+  Swift: "#F05138",
+  Kotlin: "#A97BFF",
+  "C++": "#f34b7d",
+  "C#": "#178600",
+  C: "#555555",
+  PHP: "#4F5D95",
+  Shell: "#89e051",
+  Dart: "#00B4AB",
+  Lua: "#000080",
+  Scala: "#c22d40",
+  Elixir: "#6e4a7e",
+  MDX: "#fcb32c",
+  CSS: "#563d7c",
+  HTML: "#e34c26",
 };
 
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength).trimEnd() + "...";
-}
-
 export function RepoCard({ repo }: RepoCardProps) {
-  const colorClass =
-    repo.language && LANGUAGE_COLORS[repo.language]
-      ? LANGUAGE_COLORS[repo.language]
-      : "bg-gray-400";
+  const langColor = repo.language ? LANG_COLORS[repo.language] || "#666" : null;
 
   return (
-    <Card size="sm" className="transition-shadow hover:shadow-md">
-      <CardHeader>
-        <CardTitle>
-          <a
-            href={repo.html_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-          >
-            {repo.full_name}
-          </a>
-        </CardTitle>
-        <CardAction>
-          <span className="flex items-center gap-1 text-sm text-muted-foreground">
-            <Star className="h-3.5 w-3.5" />
-            {repo.stargazers_count.toLocaleString()}
-          </span>
-        </CardAction>
-        {repo.description && (
-          <CardDescription>{truncate(repo.description, 120)}</CardDescription>
-        )}
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap items-center gap-1.5">
+    <a
+      href={repo.html_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block rounded-xl border border-border/50 bg-card/50 p-4 transition-all hover:border-primary/30 hover:bg-card hover:glow-sm"
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground truncate">{repo.owner}</p>
+          <h3 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+            {repo.name}
+          </h3>
+        </div>
+        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-all shrink-0 mt-1" />
+      </div>
+
+      {/* Description */}
+      {repo.description && (
+        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
+          {repo.description}
+        </p>
+      )}
+
+      {/* Summary (AI-generated) */}
+      {repo.summary && !repo.description && (
+        <p className="text-xs text-muted-foreground/70 line-clamp-2 mb-3 italic leading-relaxed">
+          {repo.summary}
+        </p>
+      )}
+
+      {/* Footer */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           {repo.language && (
-            <Badge variant="secondary" className="gap-1.5">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <span
-                className={`inline-block h-2 w-2 rounded-full ${colorClass}`}
-                aria-hidden="true"
+                className="inline-block h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: langColor || "#666" }}
               />
               {repo.language}
-            </Badge>
+            </span>
           )}
-          {repo.category && (
-            <Badge variant="outline">{repo.category}</Badge>
-          )}
+          <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+            <Star className="h-3 w-3" />
+            {repo.stargazers_count >= 1000
+              ? `${(repo.stargazers_count / 1000).toFixed(1)}k`
+              : repo.stargazers_count}
+          </span>
         </div>
-      </CardContent>
-    </Card>
+        {repo.category && (
+          <span className="text-[10px] text-muted-foreground/60 font-mono truncate">
+            {repo.category}
+          </span>
+        )}
+      </div>
+    </a>
   );
 }
