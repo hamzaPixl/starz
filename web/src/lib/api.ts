@@ -27,6 +27,8 @@ export interface Repo {
   license: string | null;
   forks_count: number;
   archived: boolean;
+  health_score: number;
+  sub_tags: string[];
 }
 
 export interface GraphNode {

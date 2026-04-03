@@ -12,7 +12,7 @@ import Link from "next/link";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutGrid },
-  { href: "/graph/", label: "Graph", icon: Compass },
+  { href: "/graph/", label: "Explore", icon: Compass },
   { href: "/chat/", label: "Chat", icon: MessageCircle },
 ];
 

@@ -1,133 +1,65 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import dynamic from "next/dynamic";
-import { api, type GraphData, type GraphNode, type Repo, type Stats } from "@/lib/api";
-import { CATEGORY_COLORS } from "@/lib/lang-colors";
-import { formatStars } from "@/lib/format";
+import { useEffect, useState, useMemo } from "react";
+import { api, type Repo, type Stats, type FullStats } from "@/lib/api";
+import { CATEGORY_COLORS, LANG_COLORS } from "@/lib/lang-colors";
+import { formatStars, timeAgo } from "@/lib/format";
 import { NavHeader } from "@/components/nav-header";
 import { SearchBar } from "@/components/search-bar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-// Tooltips use native title attributes for simplicity in the graph view
 import {
   ExternalLink,
   Star,
   Loader2,
   X,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-  Eye,
-  EyeOff,
-  Tag,
   GitFork,
-  Link2,
+  Heart,
+  Clock,
+  ArrowUpRight,
+  ChevronRight,
+  Sparkles,
+  Activity,
+  Shield,
 } from "lucide-react";
 
-// Dynamically import ForceGraph2D (no SSR — needs canvas)
-const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
-  ssr: false,
-});
-
-const EDGE_TYPE_CONFIG = [
-  {
-    type: "similar",
-    label: "Similar",
-    description: "Embedding similarity",
-    color: "#8b5cf6",
-    linkColor: "rgba(139, 92, 246, 0.25)",
-  },
-  {
-    type: "shared_topic",
-    label: "Shared topics",
-    description: "Common GitHub topics",
-    color: "#10b981",
-    linkColor: "rgba(16, 185, 129, 0.25)",
-  },
-  {
-    type: "same_owner",
-    label: "Same owner",
-    description: "Same GitHub org/user",
-    color: "#3b82f6",
-    linkColor: "rgba(59, 130, 246, 0.3)",
-  },
-];
-
-// Build a stable category → position mapping for clustering
-function buildCategoryPositions(categories: string[]) {
-  const positions: Record<string, { x: number; y: number }> = {};
-  const cols = Math.ceil(Math.sqrt(categories.length));
-  const spacing = 300;
-  categories.forEach((cat, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    positions[cat] = {
-      x: (col - cols / 2) * spacing,
-      y: (row - Math.ceil(categories.length / cols) / 2) * spacing,
-    };
-  });
-  return positions;
+interface CategoryCluster {
+  name: string;
+  count: number;
+  color: string;
+  repos: Repo[];
+  topLanguages: { name: string; count: number; color: string }[];
+  avgHealth: number;
+  totalStars: number;
 }
 
-interface HoveredNode extends GraphNode {
-  x?: number;
-  y?: number;
-}
-
-export default function GraphPage() {
-  const [graphData, setGraphData] = useState<GraphData | null>(null);
+export default function ExplorePage() {
+  const [repos, setRepos] = useState<Repo[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [fullStats, setFullStats] = useState<FullStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hoveredNode, setHoveredNode] = useState<HoveredNode | null>(null);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [similarRepos, setSimilarRepos] = useState<Repo[] | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
+  const [similarRepos, setSimilarRepos] = useState<Repo[]>([]);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
-  const [activeEdgeTypes, setActiveEdgeTypes] = useState<Set<string>>(
-    new Set(["similar", "shared_topic"])
-  );
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchHighlight, setSearchHighlight] = useState<Set<number>>(
-    new Set()
-  );
-  const graphRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
-  // Sidebar width
-  const sidebarWidth = 300;
-
-  // Measure container
-  useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setDimensions({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        });
-      }
-    };
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
-  }, []);
-
-  // Load data - default to similar + shared_topic
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [graph, statsData] = await Promise.all([
-          api.getGraph(),
+        const [repoData, statsData, fullStatsData] = await Promise.all([
+          api.getRepos({ limit: 200 }),
           api.getStats(),
+          api.getFullStats(),
         ]);
-        setGraphData(graph);
+        setRepos(repoData.repos);
         setStats(statsData);
+        setFullStats(fullStatsData);
       } catch (e) {
-        console.error("Failed to load graph:", e);
+        console.error("Failed to load:", e);
       } finally {
         setLoading(false);
       }
@@ -135,544 +67,557 @@ export default function GraphPage() {
     load();
   }, []);
 
-  // Load similar repos when node is selected
+  // Load similar when repo selected
   useEffect(() => {
-    if (!selectedNode) {
-      setSimilarRepos(null);
+    if (!selectedRepo) {
+      setSimilarRepos([]);
       return;
     }
     setLoadingSimilar(true);
     api
-      .getSimilar(selectedNode.id, 5)
+      .getSimilar(selectedRepo.id, 6)
       .then((data) => setSimilarRepos(data.similar))
       .catch(() => setSimilarRepos([]))
       .finally(() => setLoadingSimilar(false));
-  }, [selectedNode]);
+  }, [selectedRepo]);
 
-  // Search within graph
-  useEffect(() => {
-    if (!searchQuery.trim() || !graphData) {
-      setSearchHighlight(new Set());
-      return;
+  // Build category clusters
+  const clusters = useMemo(() => {
+    if (!stats || repos.length === 0) return [];
+
+    const grouped: Record<string, Repo[]> = {};
+    for (const repo of repos) {
+      const cat = repo.category || "Other";
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(repo);
     }
+
+    return Object.entries(grouped)
+      .map(([name, catRepos]): CategoryCluster => {
+        // Top languages in this category
+        const langCounts: Record<string, number> = {};
+        let totalStars = 0;
+        let totalHealth = 0;
+        for (const r of catRepos) {
+          if (r.language) langCounts[r.language] = (langCounts[r.language] || 0) + 1;
+          totalStars += r.stargazers_count;
+          totalHealth += r.health_score || 0;
+        }
+        const topLanguages = Object.entries(langCounts)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 3)
+          .map(([name, count]) => ({ name, count, color: LANG_COLORS[name] || "#666" }));
+
+        return {
+          name,
+          count: catRepos.length,
+          color: CATEGORY_COLORS[name] || "#6b7280",
+          repos: catRepos.sort((a, b) => b.stargazers_count - a.stargazers_count),
+          topLanguages,
+          avgHealth: catRepos.length > 0 ? Math.round(totalHealth / catRepos.length) : 0,
+          totalStars,
+        };
+      })
+      .sort((a, b) => b.count - a.count);
+  }, [repos, stats]);
+
+  // Filter by search
+  const filteredClusters = useMemo(() => {
+    if (!searchQuery.trim()) return clusters;
     const q = searchQuery.toLowerCase();
-    const matches = new Set<number>();
-    graphData.nodes.forEach((n) => {
-      if (
-        n.label?.toLowerCase().includes(q) ||
-        n.full_name?.toLowerCase().includes(q) ||
-        n.description?.toLowerCase().includes(q) ||
-        n.category?.toLowerCase().includes(q) ||
-        n.language?.toLowerCase().includes(q)
-      ) {
-        matches.add(n.id);
-      }
-    });
-    setSearchHighlight(matches);
-  }, [searchQuery, graphData]);
+    return clusters
+      .map((c) => ({
+        ...c,
+        repos: c.repos.filter(
+          (r) =>
+            r.full_name.toLowerCase().includes(q) ||
+            r.description?.toLowerCase().includes(q) ||
+            r.language?.toLowerCase().includes(q) ||
+            r.topics?.some((t) => t.toLowerCase().includes(q))
+        ),
+      }))
+      .filter((c) => c.repos.length > 0);
+  }, [clusters, searchQuery]);
 
-  // Category positions for clustering
-  const categoryPositions = useMemo(() => {
-    if (!stats) return {};
-    const cats = Object.keys(stats.by_category).sort(
-      (a, b) => (stats.by_category[b] || 0) - (stats.by_category[a] || 0)
+  const activeCluster = selectedCategory
+    ? filteredClusters.find((c) => c.name === selectedCategory)
+    : null;
+
+  const maxCount = clusters[0]?.count || 1;
+
+  if (loading) {
+    return (
+      <div className="h-screen flex flex-col">
+        <NavHeader />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
     );
-    return buildCategoryPositions(cats);
-  }, [stats]);
-
-  // Filter graph data
-  const filteredData = useMemo(() => {
-    if (!graphData) return { nodes: [], links: [] };
-
-    const filteredLinks = graphData.links.filter((l) =>
-      activeEdgeTypes.has(l.type)
-    );
-
-    let filteredNodes = graphData.nodes;
-    if (activeCategory) {
-      filteredNodes = filteredNodes.filter(
-        (n) => n.category === activeCategory
-      );
-      const catIds = new Set(filteredNodes.map((n) => n.id));
-      return {
-        nodes: filteredNodes,
-        links: filteredLinks.filter((l) => {
-          const src =
-            typeof l.source === "object" ? (l.source as any).id : l.source;
-          const tgt =
-            typeof l.target === "object" ? (l.target as any).id : l.target;
-          return catIds.has(src) && catIds.has(tgt);
-        }),
-      };
-    }
-
-    return { nodes: filteredNodes, links: filteredLinks };
-  }, [graphData, activeEdgeTypes, activeCategory]);
-
-  const toggleEdgeType = (type: string) => {
-    setActiveEdgeTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
-  };
-
-  const handleZoomIn = () => graphRef.current?.zoom(1.5, 400);
-  const handleZoomOut = () => graphRef.current?.zoom(0.67, 400);
-  const handleFit = () => graphRef.current?.zoomToFit(400, 60);
-
-  const handleNodeClick = useCallback((node: any) => {
-    setSelectedNode(node);
-    graphRef.current?.centerAt(node.x, node.y, 400);
-    graphRef.current?.zoom(3, 400);
-  }, []);
-
-  const categories = stats
-    ? Object.entries(stats.by_category).sort(([, a], [, b]) => b - a)
-    : [];
-
-  const isSearching = searchHighlight.size > 0;
-
-  // Edge type color lookup
-  const edgeColorMap: Record<string, string> = {};
-  EDGE_TYPE_CONFIG.forEach((e) => {
-    edgeColorMap[e.type] = e.linkColor;
-  });
+  }
 
   return (
-      <div className="h-screen flex flex-col overflow-hidden">
-        <NavHeader>
-          {stats && (
-            <span className="text-[11px] text-muted-foreground/50 font-mono">
-              {filteredData.nodes.length} nodes &middot;{" "}
-              {filteredData.links.length} edges
-            </span>
-          )}
-        </NavHeader>
+    <div className="h-screen flex flex-col overflow-hidden">
+      <NavHeader>
+        <span className="text-[11px] text-muted-foreground font-mono">
+          {repos.length} repos &middot; {clusters.length} categories
+        </span>
+      </NavHeader>
 
-        <div className="flex flex-1 min-h-0">
-          {/* Graph canvas */}
-          <div ref={containerRef} className="flex-1 relative bg-background">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center h-full gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary/40" />
-                <span className="text-xs text-muted-foreground/40 font-mono">
-                  Loading knowledge graph...
-                </span>
-              </div>
-            ) : (
+      <div className="flex flex-1 min-h-0">
+        {/* Left: Category map */}
+        <div className="flex-1 min-w-0 overflow-y-auto">
+          {/* Search */}
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/30 px-6 py-3">
+            <div className="max-w-md">
+              <SearchBar onSearch={setSearchQuery} placeholder="Search across all repos..." />
+            </div>
+          </div>
+
+          <div className="px-6 py-5">
+            {/* Category bubbles overview */}
+            {!selectedCategory && (
               <>
-                <ForceGraph2D
-                  ref={graphRef}
-                  graphData={filteredData}
-                  width={dimensions.width - sidebarWidth}
-                  height={dimensions.height}
-                  nodeId="id"
-                  nodeLabel=""
-                  nodeRelSize={3}
-                  nodeVal={(node: any) =>
-                    Math.max(1.5, Math.log2(node.stars || 1) * 0.8)
-                  }
-                  nodeColor={(node: any) => {
-                    // Dim non-matching nodes during search
-                    if (isSearching && !searchHighlight.has(node.id)) {
-                      return "rgba(60, 60, 80, 0.3)";
-                    }
-                    if (
-                      selectedNode &&
-                      selectedNode.id === node.id
-                    ) {
-                      return "#fff";
-                    }
-                    if (
-                      hoveredNode &&
-                      hoveredNode.id === node.id
-                    ) {
-                      return "#fff";
-                    }
-                    return CATEGORY_COLORS[node.category] || "#6b7280";
-                  }}
-                  nodeCanvasObjectMode={() => "after"}
-                  nodeCanvasObject={(
-                    node: any,
-                    ctx: CanvasRenderingContext2D,
-                    globalScale: number
-                  ) => {
-                    // Glow for selected/hovered node
-                    if (
-                      (selectedNode && selectedNode.id === node.id) ||
-                      (hoveredNode && hoveredNode.id === node.id)
-                    ) {
-                      ctx.beginPath();
-                      ctx.arc(node.x, node.y, 8 / globalScale, 0, 2 * Math.PI);
-                      ctx.fillStyle = "rgba(139, 92, 246, 0.15)";
-                      ctx.fill();
-                    }
+                <div className="mb-6">
+                  <h2 className="text-sm font-semibold mb-1">Your Knowledge Map</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {repos.length} repos across {clusters.length} categories. Click to explore.
+                  </p>
+                </div>
 
-                    // Highlight search matches
-                    if (isSearching && searchHighlight.has(node.id)) {
-                      ctx.beginPath();
-                      ctx.arc(
-                        node.x,
-                        node.y,
-                        10 / globalScale,
-                        0,
-                        2 * Math.PI
-                      );
-                      ctx.strokeStyle = "rgba(139, 92, 246, 0.6)";
-                      ctx.lineWidth = 1.5 / globalScale;
-                      ctx.stroke();
-                    }
+                {/* Bubble grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 mb-8">
+                  {filteredClusters.map((cluster) => {
+                    const sizePct = Math.max(60, (cluster.count / maxCount) * 100);
+                    return (
+                      <button
+                        key={cluster.name}
+                        onClick={() => setSelectedCategory(cluster.name)}
+                        className="group relative rounded-xl border border-border/30 bg-card/30 p-4 text-left transition-all hover:border-border/60 hover:bg-card/50 hover:glow-sm"
+                      >
+                        {/* Color accent bar */}
+                        <div
+                          className="absolute top-0 left-4 right-4 h-0.5 rounded-b-full opacity-60 group-hover:opacity-100 transition-opacity"
+                          style={{ backgroundColor: cluster.color }}
+                        />
 
-                    // Labels at different zoom levels
-                    if (globalScale > 2) {
-                      const label = node.label || "";
-                      const fontSize = Math.min(12, 10 / globalScale);
-                      ctx.font = `500 ${fontSize}px 'Geist', sans-serif`;
-                      ctx.textAlign = "center";
-                      ctx.textBaseline = "top";
-                      ctx.fillStyle =
-                        isSearching && !searchHighlight.has(node.id)
-                          ? "rgba(255,255,255,0.15)"
-                          : "rgba(255,255,255,0.8)";
-                      ctx.fillText(label, node.x, node.y + 7 / globalScale);
-                    }
-                    if (globalScale > 4) {
-                      const owner = node.owner || "";
-                      const fontSize = Math.min(9, 8 / globalScale);
-                      ctx.font = `400 ${fontSize}px 'Geist', sans-serif`;
-                      ctx.textAlign = "center";
-                      ctx.textBaseline = "top";
-                      ctx.fillStyle = "rgba(255,255,255,0.35)";
-                      ctx.fillText(owner, node.x, node.y + 16 / globalScale);
-                    }
-                  }}
-                  linkColor={(link: any) =>
-                    edgeColorMap[link.type] || "rgba(100,100,100,0.15)"
-                  }
-                  linkWidth={(link: any) =>
-                    Math.max(0.2, link.weight * 1.2)
-                  }
-                  onNodeHover={(node: any) => setHoveredNode(node || null)}
-                  onNodeClick={handleNodeClick}
-                  onBackgroundClick={() => setSelectedNode(null)}
-                  cooldownTicks={200}
-                  d3AlphaDecay={0.02}
-                  d3VelocityDecay={0.25}
-                  // Cluster by category using forces
-                  d3AlphaMin={0.01}
-                  enableNodeDrag={true}
-                  backgroundColor="transparent"
-                  onEngineStop={() => {
-                    // Apply gentle category clustering
-                    if (graphRef.current && categoryPositions) {
-                      const fg = graphRef.current;
-                      // Use d3 forces if available
-                      try {
-                        fg.d3Force("x")?.strength(0.05);
-                        fg.d3Force("y")?.strength(0.05);
-                      } catch {
-                        // forces may not be available
-                      }
-                    }
-                  }}
-                />
+                        <div className="flex items-start justify-between mb-2 mt-1">
+                          <span
+                            className="text-2xl font-bold tabular-nums"
+                            style={{ color: cluster.color }}
+                          >
+                            {cluster.count}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/50 transition-all" />
+                        </div>
 
-                {/* Hover tooltip */}
-                {hoveredNode && !selectedNode && (
-                  <div className="absolute top-4 left-4 rounded-xl border border-border/30 bg-card/95 backdrop-blur-md p-4 max-w-xs pointer-events-none shadow-2xl shadow-black/20">
-                    <p className="text-sm font-semibold text-foreground">
-                      {hoveredNode.full_name}
-                    </p>
-                    {hoveredNode.description && (
-                      <p className="text-[12px] text-muted-foreground/70 mt-1.5 line-clamp-2 leading-relaxed">
-                        {hoveredNode.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-2">
-                      {hoveredNode.language && (
-                        <span className="text-[11px] text-muted-foreground/50 font-mono">
-                          {hoveredNode.language}
-                        </span>
-                      )}
-                      {hoveredNode.category && (
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] h-4 px-1.5 bg-secondary/60 border-0"
-                        >
-                          {hoveredNode.category}
-                        </Badge>
-                      )}
-                      <span className="text-[11px] text-muted-foreground/50 flex items-center gap-0.5 font-mono">
-                        <Star className="h-2.5 w-2.5" />
-                        {hoveredNode.stars?.toLocaleString()}
+                        <p className="text-xs font-medium text-foreground/80 mb-2 leading-tight">
+                          {cluster.name}
+                        </p>
+
+                        {/* Language dots */}
+                        <div className="flex items-center gap-1">
+                          {cluster.topLanguages.map((lang) => (
+                            <span
+                              key={lang.name}
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: lang.color }}
+                              title={`${lang.name}: ${lang.count}`}
+                            />
+                          ))}
+                          <span className="text-[10px] text-muted-foreground/40 ml-1">
+                            {formatStars(cluster.totalStars)} stars
+                          </span>
+                        </div>
+
+                        {/* Health bar */}
+                        <div className="mt-2 h-1 rounded-full bg-secondary/30 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${cluster.avgHealth}%`,
+                              backgroundColor:
+                                cluster.avgHealth > 70
+                                  ? "#10b981"
+                                  : cluster.avgHealth > 40
+                                    ? "#f59e0b"
+                                    : "#ef4444",
+                            }}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Timeline sparkline */}
+                {fullStats?.timeline && (
+                  <div className="rounded-xl border border-border/30 bg-card/20 p-4 mb-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="text-xs font-medium">Starring Activity</h3>
+                        <p className="text-[10px] text-muted-foreground">Monthly velocity</p>
+                      </div>
+                      <Activity className="h-3.5 w-3.5 text-muted-foreground/30" />
+                    </div>
+                    <div className="flex items-end gap-1 h-16">
+                      {Object.entries(fullStats.timeline)
+                        .slice(-12)
+                        .map(([month, count]) => {
+                          const maxH = Math.max(
+                            ...Object.values(fullStats.timeline).map(Number),
+                            1
+                          );
+                          return (
+                            <div
+                              key={month}
+                              className="flex-1 rounded-t-sm bg-primary/40 hover:bg-primary/70 transition-colors cursor-default"
+                              style={{
+                                height: `${Math.max(4, (Number(count) / maxH) * 100)}%`,
+                              }}
+                              title={`${month}: ${count} repos`}
+                            />
+                          );
+                        })}
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[9px] text-muted-foreground/30">
+                        {Object.keys(fullStats.timeline).slice(-12)[0]}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground/30">
+                        {Object.keys(fullStats.timeline).slice(-1)[0]}
                       </span>
                     </div>
                   </div>
                 )}
 
-                {/* Search overlay */}
-                <div className="absolute top-4 left-4 w-64">
-                  {!hoveredNode && (
-                    <SearchBar
-                      onSearch={setSearchQuery}
-                      placeholder="Search graph..."
+                {/* Top topics cloud */}
+                {fullStats?.top_topics && (
+                  <div className="rounded-xl border border-border/30 bg-card/20 p-4">
+                    <h3 className="text-xs font-medium mb-3">Topic Cloud</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(fullStats.top_topics)
+                        .slice(0, 25)
+                        .map(([topic, count], i) => {
+                          const maxT = Number(Object.values(fullStats.top_topics)[0]) || 1;
+                          const opacity = 0.3 + (Number(count) / maxT) * 0.7;
+                          const size = 10 + (Number(count) / maxT) * 4;
+                          return (
+                            <span
+                              key={topic}
+                              className="rounded-md bg-primary/10 px-2 py-0.5 text-primary transition-colors hover:bg-primary/20 cursor-default"
+                              style={{ fontSize: `${size}px`, opacity }}
+                            >
+                              {topic}
+                              <span className="ml-1 opacity-50">{String(count)}</span>
+                            </span>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Drilled-in category view */}
+            {selectedCategory && activeCluster && (
+              <>
+                <div className="mb-4 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setSelectedCategory(null);
+                      setSelectedRepo(null);
+                    }}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    All categories
+                  </button>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
+                  <span className="text-xs font-medium flex items-center gap-1.5">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: activeCluster.color }}
                     />
-                  )}
-                  {isSearching && (
-                    <p className="text-[10px] text-muted-foreground/40 mt-1.5 px-1 font-mono">
-                      {searchHighlight.size} match
-                      {searchHighlight.size !== 1 ? "es" : ""}
-                    </p>
-                  )}
+                    {activeCluster.name}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] h-4">
+                    {activeCluster.count} repos
+                  </Badge>
                 </div>
 
-                {/* Zoom controls */}
-                <div className="absolute bottom-4 left-4 flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-8 w-8 p-0 bg-card/80 backdrop-blur-sm border border-border/20"
-                    onClick={handleZoomIn}
-                    title="Zoom in"
-                  >
-                    <ZoomIn className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-8 w-8 p-0 bg-card/80 backdrop-blur-sm border border-border/20"
-                    onClick={handleZoomOut}
-                    title="Zoom out"
-                  >
-                    <ZoomOut className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-8 w-8 p-0 bg-card/80 backdrop-blur-sm border border-border/20"
-                    onClick={handleFit}
-                    title="Fit to view"
-                  >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                  </Button>
+                {/* Category stats bar */}
+                <div className="flex items-center gap-4 mb-4 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Star className="h-3 w-3" />
+                    {formatStars(activeCluster.totalStars)} total stars
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Shield className="h-3 w-3" />
+                    Avg health: {activeCluster.avgHealth}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    {activeCluster.topLanguages.map((l) => (
+                      <span
+                        key={l.name}
+                        className="inline-flex items-center gap-0.5"
+                      >
+                        <span
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: l.color }}
+                        />
+                        {l.name}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+
+                {/* Repos list */}
+                <div className="space-y-1">
+                  {activeCluster.repos.map((repo) => (
+                    <button
+                      key={repo.id}
+                      onClick={() => setSelectedRepo(repo)}
+                      className={`w-full text-left rounded-lg border px-4 py-3 transition-all ${
+                        selectedRepo?.id === repo.id
+                          ? "border-primary/40 bg-primary/5 glow-sm"
+                          : "border-border/20 bg-card/20 hover:border-border/40 hover:bg-card/40"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] text-muted-foreground/40">
+                              {repo.owner}
+                            </span>
+                            {repo.archived && (
+                              <Badge variant="secondary" className="text-[9px] h-3.5 px-1 opacity-50">
+                                archived
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium truncate">{repo.name}</p>
+                          {repo.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                              {repo.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                            <Star className="h-2.5 w-2.5" />
+                            {formatStars(repo.stargazers_count)}
+                          </span>
+                          {repo.health_score > 0 && (
+                            <span
+                              className="text-[9px] font-mono"
+                              style={{
+                                color:
+                                  repo.health_score > 70
+                                    ? "#10b981"
+                                    : repo.health_score > 40
+                                      ? "#f59e0b"
+                                      : "#ef4444",
+                              }}
+                            >
+                              {repo.health_score}%
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {repo.language && (
+                          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{
+                                backgroundColor: LANG_COLORS[repo.language] || "#666",
+                              }}
+                            />
+                            {repo.language}
+                          </span>
+                        )}
+                        {repo.license && (
+                          <span className="text-[10px] text-muted-foreground/40">
+                            {repo.license}
+                          </span>
+                        )}
+                        {repo.forks_count > 0 && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/40">
+                            <GitFork className="h-2.5 w-2.5" />
+                            {formatStars(repo.forks_count)}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </>
             )}
           </div>
+        </div>
 
-          {/* Right sidebar */}
-          <aside
-            className="shrink-0 border-l border-border/20 bg-card/10 backdrop-blur-sm flex flex-col overflow-hidden"
-            style={{ width: sidebarWidth }}
-          >
-            <div className="flex-1 overflow-y-auto">
-              {/* Edge type toggles */}
-              <div className="p-4 border-b border-border/10">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/30 font-semibold mb-3">
-                  Connection types
-                </p>
-                <div className="space-y-1">
-                  {EDGE_TYPE_CONFIG.map(({ type, label, description, color }) => (
-                    <button
-                      key={type}
-                      onClick={() => toggleEdgeType(type)}
-                      className={`flex items-center gap-2.5 w-full rounded-lg px-2.5 py-2 text-xs transition-all ${
-                        activeEdgeTypes.has(type)
-                          ? "bg-secondary/40 text-foreground"
-                          : "text-muted-foreground/30 hover:text-muted-foreground/60 hover:bg-secondary/20"
-                      }`}
-                    >
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0 transition-opacity"
-                        style={{
-                          backgroundColor: color,
-                          opacity: activeEdgeTypes.has(type) ? 1 : 0.2,
-                        }}
-                      />
-                      <div className="text-left flex-1">
-                        <span className="block font-medium">{label}</span>
-                        <span className="block text-[10px] text-muted-foreground/40">
-                          {description}
-                        </span>
-                      </div>
-                      {activeEdgeTypes.has(type) ? (
-                        <Eye className="h-3 w-3 text-muted-foreground/30" />
-                      ) : (
-                        <EyeOff className="h-3 w-3 text-muted-foreground/15" />
-                      )}
-                    </button>
-                  ))}
-                </div>
+        {/* Right: Selected repo detail + similar */}
+        {selectedRepo && (
+          <aside className="w-[340px] shrink-0 border-l border-border/50 bg-card/20 overflow-y-auto">
+            <div className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-medium">
+                  Repo Detail
+                </span>
+                <button
+                  onClick={() => setSelectedRepo(null)}
+                  className="text-muted-foreground/40 hover:text-foreground transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
 
-              {/* Category legend */}
-              <div className="p-4 border-b border-border/10">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/30 font-semibold mb-3">
-                  Categories
-                </p>
-                <div className="space-y-0.5 max-h-[250px] overflow-y-auto">
-                  <button
-                    onClick={() => setActiveCategory(null)}
-                    className={`w-full text-left rounded-md px-2.5 py-1.5 text-xs transition-all ${
-                      !activeCategory
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground/50 hover:text-foreground hover:bg-secondary/20"
-                    }`}
-                  >
-                    All categories
-                  </button>
-                  {categories.map(([name, count]) => (
-                    <button
-                      key={name}
-                      onClick={() =>
-                        setActiveCategory(
-                          activeCategory === name ? null : name
-                        )
-                      }
-                      className={`flex items-center justify-between w-full rounded-md px-2.5 py-1.5 text-xs transition-all ${
-                        activeCategory === name
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground/50 hover:text-foreground hover:bg-secondary/20"
-                      }`}
+              {/* Repo info */}
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[11px] text-muted-foreground">{selectedRepo.owner}</p>
+                  <h3 className="text-base font-semibold">{selectedRepo.name}</h3>
+                </div>
+
+                {selectedRepo.description && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {selectedRepo.description}
+                  </p>
+                )}
+
+                {selectedRepo.summary && selectedRepo.summary !== selectedRepo.description && (
+                  <div className="rounded-lg bg-primary/5 border border-primary/10 p-2.5">
+                    <p className="text-[10px] text-primary/60 font-medium mb-1 flex items-center gap-1">
+                      <Sparkles className="h-2.5 w-2.5" /> AI Summary
+                    </p>
+                    <p className="text-xs text-foreground/70 leading-relaxed">
+                      {selectedRepo.summary}
+                    </p>
+                  </div>
+                )}
+
+                {/* Metadata grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-secondary/20 px-2.5 py-1.5">
+                    <p className="text-[10px] text-muted-foreground/50">Stars</p>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {formatStars(selectedRepo.stargazers_count)}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-secondary/20 px-2.5 py-1.5">
+                    <p className="text-[10px] text-muted-foreground/50">Health</p>
+                    <p
+                      className="text-sm font-semibold tabular-nums"
+                      style={{
+                        color:
+                          (selectedRepo.health_score || 0) > 70
+                            ? "#10b981"
+                            : (selectedRepo.health_score || 0) > 40
+                              ? "#f59e0b"
+                              : "#ef4444",
+                      }}
                     >
-                      <span className="flex items-center gap-2 min-w-0">
+                      {selectedRepo.health_score || 0}%
+                    </p>
+                  </div>
+                  {selectedRepo.forks_count > 0 && (
+                    <div className="rounded-md bg-secondary/20 px-2.5 py-1.5">
+                      <p className="text-[10px] text-muted-foreground/50">Forks</p>
+                      <p className="text-sm font-semibold tabular-nums">
+                        {formatStars(selectedRepo.forks_count)}
+                      </p>
+                    </div>
+                  )}
+                  {selectedRepo.language && (
+                    <div className="rounded-md bg-secondary/20 px-2.5 py-1.5">
+                      <p className="text-[10px] text-muted-foreground/50">Language</p>
+                      <p className="text-sm font-medium flex items-center gap-1">
                         <span
-                          className="h-2 w-2 rounded-full shrink-0"
+                          className="h-2 w-2 rounded-full"
                           style={{
-                            backgroundColor:
-                              CATEGORY_COLORS[name] || "#6b7280",
+                            backgroundColor: LANG_COLORS[selectedRepo.language] || "#666",
                           }}
                         />
-                        <span className="truncate">{name}</span>
-                      </span>
-                      <span className="text-[10px] text-muted-foreground/25 tabular-nums font-mono shrink-0 ml-2">
-                        {count}
-                      </span>
-                    </button>
-                  ))}
+                        {selectedRepo.language}
+                      </p>
+                    </div>
+                  )}
                 </div>
+
+                {/* Tags */}
+                {selectedRepo.topics && selectedRepo.topics.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedRepo.topics.map((t) => (
+                      <span
+                        key={t}
+                        className="rounded-md bg-secondary/30 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <a
+                  href={selectedRepo.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open on GitHub
+                </a>
               </div>
 
-              {/* Selected node detail */}
-              {selectedNode && (
-                <div className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground/30 font-semibold">
-                      Selected repo
-                    </p>
-                    <button
-                      onClick={() => setSelectedNode(null)}
-                      className="text-muted-foreground/30 hover:text-foreground transition-colors"
-                      aria-label="Deselect node"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+              <Separator className="my-4 opacity-20" />
+
+              {/* Similar repos */}
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/40 font-medium mb-2">
+                  Similar repos
+                </p>
+                {loadingSimilar ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="h-10 w-full" />
+                    ))}
                   </div>
-
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-bold tracking-tight">
-                      {selectedNode.full_name}
-                    </h3>
-                    {selectedNode.description && (
-                      <p className="text-xs text-muted-foreground/60 leading-relaxed">
-                        {selectedNode.description}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedNode.language && (
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] bg-secondary/40 border-0"
-                        >
-                          {selectedNode.language}
-                        </Badge>
-                      )}
-                      {selectedNode.category && (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px]"
-                          style={{
-                            borderColor:
-                              CATEGORY_COLORS[selectedNode.category] ||
-                              "#6b7280",
-                            color:
-                              CATEGORY_COLORS[selectedNode.category] ||
-                              "#6b7280",
-                          }}
-                        >
-                          {selectedNode.category}
-                        </Badge>
-                      )}
-                      <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/40 font-mono">
-                        <Star className="h-2.5 w-2.5" />
-                        {selectedNode.stars?.toLocaleString()}
-                      </span>
-                    </div>
-
-                    <a
-                      href={selectedNode.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-primary/70 hover:text-primary transition-colors"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      Open on GitHub
-                    </a>
-
-                    {/* Similar repos */}
-                    <Separator className="opacity-10" />
-                    <div>
-                      <p className="text-[10px] uppercase tracking-widest text-muted-foreground/30 font-semibold mb-2">
-                        Similar repos
-                      </p>
-                      {loadingSimilar && (
-                        <div className="space-y-2">
-                          {Array.from({ length: 3 }).map((_, i) => (
-                            <Skeleton key={i} className="h-10 w-full rounded-lg" />
-                          ))}
-                        </div>
-                      )}
-                      {similarRepos && similarRepos.length > 0 && (
-                        <div className="space-y-1">
-                          {similarRepos.map((repo) => (
-                            <a
-                              key={repo.id}
-                              href={repo.html_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs hover:bg-secondary/30 transition-colors group"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-foreground/80 group-hover:text-primary truncate transition-colors">
-                                  {repo.full_name}
-                                </p>
-                                {repo.description && (
-                                  <p className="text-[10px] text-muted-foreground/40 truncate mt-0.5">
-                                    {repo.description}
-                                  </p>
-                                )}
-                              </div>
-                              <span className="text-[10px] text-muted-foreground/30 tabular-nums font-mono shrink-0">
-                                {formatStars(repo.stargazers_count)}
-                              </span>
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                      {similarRepos && similarRepos.length === 0 && (
-                        <p className="text-[11px] text-muted-foreground/30">
-                          No similar repos found
-                        </p>
-                      )}
-                    </div>
+                ) : similarRepos.length > 0 ? (
+                  <div className="space-y-1">
+                    {similarRepos.map((r: any) => (
+                      <a
+                        key={r.full_name || r.id}
+                        href={r.html_url || `https://github.com/${r.full_name}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-secondary/30 transition-colors"
+                      >
+                        {r.language && (
+                          <span
+                            className="h-1.5 w-1.5 rounded-full shrink-0"
+                            style={{
+                              backgroundColor: LANG_COLORS[r.language] || "#666",
+                            }}
+                          />
+                        )}
+                        <span className="text-xs truncate flex-1 group-hover:text-primary transition-colors">
+                          {r.full_name || r.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/30 font-mono">
+                          {formatStars(r.stargazers_count || r.stars || 0)}
+                        </span>
+                        <ArrowUpRight className="h-2.5 w-2.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors shrink-0" />
+                      </a>
+                    ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-xs text-muted-foreground/30">No similar repos found</p>
+                )}
+              </div>
             </div>
           </aside>
-        </div>
+        )}
       </div>
+    </div>
   );
 }
