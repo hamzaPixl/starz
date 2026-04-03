@@ -48,7 +48,10 @@ def _serialize_embedding(embedding: list[float]) -> bytes:
 
 
 def embed_texts(texts: list[str], client: OpenAI | None = None) -> list[list[float]]:
-    """Generate embeddings for a list of texts using OpenAI."""
+    """Generate embeddings for a list of texts using OpenAI.
+
+    Raises on API errors so callers can handle them (e.g. skip the batch).
+    """
     if not client:
         client = _get_client()
     response = client.embeddings.create(input=texts, model=MODEL)
@@ -118,12 +121,18 @@ def embed_repos(on_progress: callable | None = None) -> int:
 
 
 def query_similar(query: str, limit: int = 10) -> list[dict]:
-    """Find repos most similar to a query string."""
-    client = _get_client()
+    """Find repos most similar to a query string.
 
-    # Embed the query
-    response = client.embeddings.create(input=[query], model=MODEL)
-    query_embedding = response.data[0].embedding
+    Returns an empty list if the embedding API call fails.
+    """
+    try:
+        client = _get_client()
+        response = client.embeddings.create(input=[query], model=MODEL)
+        query_embedding = response.data[0].embedding
+    except Exception as e:
+        logger.error("Failed to generate query embedding: %s", e)
+        return []
+
     query_bytes = _serialize_embedding(query_embedding)
 
     with get_db() as conn:

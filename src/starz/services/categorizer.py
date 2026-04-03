@@ -66,6 +66,7 @@ def categorize_batch(
     """Categorize a batch of repos using Claude Haiku.
 
     Returns list of {full_name, category, summary}.
+    Raises on API or JSON parse errors so the caller can skip the batch.
     """
     descriptions = []
     for i, repo in enumerate(repos, 1):
@@ -87,7 +88,14 @@ def categorize_batch(
         text = text.split("\n", 1)[1]
         text = text.rsplit("```", 1)[0]
 
-    return json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse categorization JSON response: %s", e)
+        logger.debug("Raw response: %s", text[:500])
+        raise
+
+    return parsed
 
 
 def categorize_repos(on_progress: callable | None = None) -> int:

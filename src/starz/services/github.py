@@ -29,13 +29,20 @@ async def fetch_starred_repos(client: httpx.AsyncClient) -> list[dict[str, Any]]
     repos: list[dict[str, Any]] = []
     page = 1
     while True:
-        resp = await client.get(
-            f"{GITHUB_API}/user/starred",
-            params={"per_page": 100, "page": page},
-            headers=_headers(),
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = await client.get(
+                f"{GITHUB_API}/user/starred",
+                params={"per_page": 100, "page": page},
+                headers=_headers(),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+            logger.error("Failed to fetch starred repos page %d: %s", page, e)
+            break
+        except Exception as e:
+            logger.error("Unexpected error fetching starred repos page %d: %s", page, e)
+            break
         if not data:
             break
         for item in data:
