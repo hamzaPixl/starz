@@ -8,14 +8,7 @@ import { ChatPanel } from "@/components/chat-panel";
 import { SyncButton } from "@/components/sync-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  MessageCircle,
-  X,
-  Star,
-  GitFork,
-  Sparkles,
-  LayoutGrid,
-} from "lucide-react";
+import { MessageCircle, X, Sparkles } from "lucide-react";
 
 export default function Home() {
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -26,7 +19,6 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [total, setTotal] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
-  const [view, setView] = useState<"grid" | "list">("grid");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -76,138 +68,126 @@ export default function Home() {
     : [];
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Main dashboard */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex items-center justify-between border-b border-border/50 px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <h1 className="text-lg font-semibold tracking-tight">Starz</h1>
-            </div>
-            {stats && (
-              <span className="text-xs text-muted-foreground font-mono">
-                {stats.total} repos
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <SyncButton onSyncComplete={handleSyncComplete} />
-            <Button
-              variant={chatOpen ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setChatOpen(!chatOpen)}
-              className="gap-1.5"
-            >
-              {chatOpen ? (
-                <X className="h-4 w-4" />
-              ) : (
-                <MessageCircle className="h-4 w-4" />
-              )}
-              {chatOpen ? "Close" : "Ask AI"}
-            </Button>
-          </div>
-        </header>
-
-        {/* Search + filters strip */}
-        <div className="border-b border-border/50 px-6 py-3 space-y-3">
-          <div className="max-w-xl">
-            <SearchBar
-              onSearch={setQuery}
-              placeholder="Search your stars..."
-            />
-          </div>
-
-          {/* Category pills */}
-          <div className="flex flex-wrap gap-1.5">
-            {categories.map(([name, count]) => (
-              <button
-                key={name}
-                onClick={() =>
-                  setCategory(category === name ? null : name)
-                }
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all ${
-                  category === name
-                    ? "bg-primary text-primary-foreground glow-sm"
-                    : "bg-secondary text-secondary-foreground hover:bg-accent"
-                }`}
-              >
-                {name}
-                <span className="opacity-50">{count}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Language pills */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {languages.map(([name, count]) => (
-              <button
-                key={name}
-                onClick={() =>
-                  setLanguage(language === name ? null : name)
-                }
-                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs transition-all font-mono ${
-                  language === name
-                    ? "bg-primary/20 text-primary ring-1 ring-primary/40"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                }`}
-              >
-                {name}
-                <span className="opacity-40">{count}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Active filters summary */}
-          {hasFilters && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                {total} result{total !== 1 ? "s" : ""}
-              </span>
-              {category && (
-                <Badge
-                  variant="secondary"
-                  className="gap-1 cursor-pointer"
-                  onClick={() => setCategory(null)}
-                >
-                  {category}
-                  <X className="h-3 w-3" />
-                </Badge>
-              )}
-              {language && (
-                <Badge
-                  variant="secondary"
-                  className="gap-1 cursor-pointer"
-                  onClick={() => setLanguage(null)}
-                >
-                  {language}
-                  <X className="h-3 w-3" />
-                </Badge>
-              )}
-              <button
-                onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-foreground underline"
-              >
-                Clear all
-              </button>
-            </div>
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* ── Top bar ── */}
+      <header className="shrink-0 flex items-center justify-between border-b border-border/50 px-6 h-12">
+        <div className="flex items-center gap-3">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <h1 className="text-sm font-semibold tracking-tight">Starz</h1>
+          {stats && (
+            <span className="text-[11px] text-muted-foreground font-mono">
+              {stats.total} repos
+            </span>
           )}
         </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <RepoGrid repos={repos} loading={loading} />
+        <div className="flex items-center gap-2">
+          <SyncButton onSyncComplete={handleSyncComplete} />
+          <Button
+            variant={chatOpen ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setChatOpen(!chatOpen)}
+            className="gap-1.5 h-8 text-xs"
+          >
+            {chatOpen ? <X className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+            {chatOpen ? "Close" : "Ask AI"}
+          </Button>
         </div>
-      </div>
+      </header>
 
-      {/* Chat panel — slide in from right */}
-      {chatOpen && (
-        <aside className="w-[400px] shrink-0 border-l border-border/50 bg-card/50">
-          <ChatPanel />
-        </aside>
-      )}
+      {/* ── Body: filters + grid | chat ── */}
+      <div className="flex flex-1 min-h-0">
+        {/* Left: filters + grid in a single scroll container */}
+        <div className="flex-1 min-w-0 overflow-y-auto">
+          {/* Sticky filter bar */}
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/30 px-6 py-3 space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 max-w-md">
+                <SearchBar onSearch={setQuery} placeholder="Search your stars..." />
+              </div>
+              {hasFilters && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                    {total} result{total !== 1 ? "s" : ""}
+                  </span>
+                  {category && (
+                    <Badge
+                      variant="secondary"
+                      className="gap-1 cursor-pointer text-[11px] h-5"
+                      onClick={() => setCategory(null)}
+                    >
+                      {category}
+                      <X className="h-2.5 w-2.5" />
+                    </Badge>
+                  )}
+                  {language && (
+                    <Badge
+                      variant="secondary"
+                      className="gap-1 cursor-pointer text-[11px] h-5"
+                      onClick={() => setLanguage(null)}
+                    >
+                      {language}
+                      <X className="h-2.5 w-2.5" />
+                    </Badge>
+                  )}
+                  <button
+                    onClick={clearFilters}
+                    className="text-[11px] text-muted-foreground hover:text-foreground ml-1"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Category + language pills on one row */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none">
+              {categories.map(([name, count]) => (
+                <button
+                  key={name}
+                  onClick={() => setCategory(category === name ? null : name)}
+                  className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-all ${
+                    category === name
+                      ? "bg-primary text-primary-foreground glow-sm"
+                      : "bg-secondary/70 text-secondary-foreground hover:bg-accent"
+                  }`}
+                >
+                  {name}
+                  <span className="opacity-40">{count}</span>
+                </button>
+              ))}
+              {categories.length > 0 && languages.length > 0 && (
+                <div className="shrink-0 w-px h-4 bg-border/50 mx-1" />
+              )}
+              {languages.map(([name, count]) => (
+                <button
+                  key={name}
+                  onClick={() => setLanguage(language === name ? null : name)}
+                  className={`shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-mono transition-all ${
+                    language === name
+                      ? "bg-primary/20 text-primary ring-1 ring-primary/40"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+                  }`}
+                >
+                  {name}
+                  <span className="opacity-40">{count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Repo grid */}
+          <div className="px-6 py-4">
+            <RepoGrid repos={repos} loading={loading} />
+          </div>
+        </div>
+
+        {/* Right: chat panel — fixed height, its own scroll */}
+        {chatOpen && (
+          <aside className="w-[380px] shrink-0 border-l border-border/50 bg-card/30">
+            <ChatPanel />
+          </aside>
+        )}
+      </div>
     </div>
   );
 }

@@ -118,3 +118,12 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.4 0.03 270);
 }
+
+/* Hide scrollbar for horizontal strips */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
